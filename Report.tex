@@ -1,0 +1,379 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{hyperref}
+
+\usepackage{xepersian}
+
+\settextfont{XB Niloofar}
+\setlatintextfont{Times New Roman}
+
+\title{
+\vspace{-2cm}
+\includegraphics[width=3cm]{example-image}\\[1cm]
+گزارش اولیه پروژه\\
+سامانه MLOps پردازش و پیش‌بینی داده‌های بورس ایران\\
+مبتنی بر Apache Airflow
+}
+
+\author{
+اعضای گروه:\\
+متخصص علوم کامپیوتر\\
+متخصص علم داده\\
+مهندس نرم‌افزار
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+%===================================================
+
+\section{مقدمه}
+
+با رشد سریع داده‌های مالی و توسعه سیستم‌های تحلیل بازار سرمایه، نیاز به طراحی سامانه‌های هوشمند جهت پردازش، مدیریت و تحلیل داده‌های بورسی بیش از پیش احساس می‌شود. بازار بورس ایران نیز روزانه حجم بسیار زیادی از داده‌های مالی، قیمت سهام، شاخص‌ها و اطلاعات معاملاتی تولید می‌کند.
+
+هدف این پروژه طراحی و پیاده‌سازی یک سامانه مبتنی بر \lr{MLOps} برای جمع‌آوری، پردازش، آموزش مدل‌های یادگیری ماشین و ارائه سرویس پیش‌بینی بر پایه داده‌های بازار بورس ایران است.
+
+این پروژه در قالب درس \lr{ML Ops and Data Processing with Apache Airflow} تعریف شده و به‌صورت مرحله‌ای در طول ترم توسعه خواهد یافت.
+
+%===================================================
+
+\section{هدف پروژه}
+
+اهداف اصلی پروژه عبارت‌اند از:
+
+\begin{itemize}
+\item جمع‌آوری خودکار داده‌های بازار بورس ایران
+\item پردازش و پاکسازی داده‌ها
+\item تولید ویژگی‌های تحلیلی مالی
+\item آموزش مدل‌های یادگیری ماشین
+\item مدیریت Workflowها توسط Apache Airflow
+\item طراحی معماری مبتنی بر Docker Compose
+\item پیاده‌سازی API جهت سرویس‌دهی مدل
+\item ایجاد زیرساخت اولیه MLOps
+\end{itemize}
+
+%===================================================
+
+\section{تعریف مسئله}
+
+در این پروژه قصد داریم از داده‌های بازار بورس ایران جهت توسعه مدل‌های یادگیری ماشین استفاده کنیم.
+
+مدل از داده‌های زیر استفاده خواهد کرد:
+
+\begin{itemize}
+\item قیمت باز شدن (Open)
+\item قیمت بسته شدن (Close)
+\item بیشترین قیمت (High)
+\item کمترین قیمت (Low)
+\item حجم معاملات (Volume)
+\item شاخص‌های تکنیکال
+\begin{itemize}
+\item RSI
+\item MACD
+\item Moving Average
+\item Lag Features
+\end{itemize}
+\end{itemize}
+
+خروجی مدل در فاز اولیه می‌تواند شامل موارد زیر باشد:
+
+\begin{enumerate}
+\item پیش‌بینی قیمت روز آینده سهام
+\item دسته‌بندی تصمیم سرمایه‌گذاری:
+\begin{center}
+BUY / HOLD / SELL
+\end{center}
+\end{enumerate}
+
+%===================================================
+
+\section{معماری اولیه سیستم}
+
+معماری پروژه مطابق معماری‌های متداول \lr{MLOps} طراحی شده است.
+
+جریان پردازش سیستم به شکل زیر خواهد بود:
+
+\begin{center}
+Iran Stock Data
+
+$\downarrow$
+
+Apache Airflow
+
+$\downarrow$
+
+Data Ingestion
+
+$\downarrow$
+
+Preprocessing
+
+$\downarrow$
+
+Feature Engineering
+
+$\downarrow$
+
+Model Training
+
+$\downarrow$
+
+Model Evaluation
+
+$\downarrow$
+
+MLflow Tracking
+
+$\downarrow$
+
+FastAPI Prediction Service
+\end{center}
+
+%===================================================
+
+\section{تکنولوژی‌های استفاده‌شده}
+
+\subsection{Apache Airflow}
+
+استفاده برای:
+
+\begin{itemize}
+\item Workflow Orchestration
+\item DAG Scheduling
+\item Task Management
+\end{itemize}
+
+دلیل انتخاب:
+
+Apache Airflow یکی از رایج‌ترین ابزارهای صنعت برای مدیریت Pipelineهای داده و سامانه‌های MLOps محسوب می‌شود.
+
+\subsection{Docker و Docker Compose}
+
+استفاده برای:
+
+\begin{itemize}
+\item Containerization
+\item Environment Isolation
+\item Multi-Service Deployment
+\end{itemize}
+
+\subsection{Python}
+
+زبان اصلی توسعه پروژه.
+
+استفاده در:
+
+\begin{itemize}
+\item Data Processing
+\item Machine Learning
+\item API Development
+\item Workflow Definition
+\end{itemize}
+
+\subsection{PostgreSQL}
+
+استفاده برای:
+
+\begin{itemize}
+\item Airflow Metadata Storage
+\item Logging
+\item Model Metadata
+\end{itemize}
+
+\subsection{Redis}
+
+استفاده به عنوان:
+
+\begin{itemize}
+\item Message Broker
+\item Celery Backend
+\end{itemize}
+
+\subsection{Scikit-Learn}
+
+استفاده برای:
+
+\begin{itemize}
+\item Model Training
+\item Classification
+\item Regression
+\item Model Evaluation
+\end{itemize}
+
+\subsection{MLflow}
+
+استفاده برای:
+
+\begin{itemize}
+\item Experiment Tracking
+\item Model Registry
+\item Metric Logging
+\end{itemize}
+
+\subsection{FastAPI}
+
+استفاده برای:
+
+\begin{itemize}
+\item REST API Development
+\item Model Serving
+\item Prediction Endpoints
+\end{itemize}
+
+\subsection{Prometheus + Grafana}
+
+(در فازهای آینده پروژه)
+
+برای:
+
+\begin{itemize}
+\item Monitoring
+\item Metrics Visualization
+\end{itemize}
+
+%===================================================
+
+\section{منابع و مستندات مطالعه‌شده}
+
+در فاز اولیه پروژه، اعضای تیم جهت طراحی معماری و انتخاب تکنولوژی‌ها، منابع رسمی زیر را مطالعه کردند.
+
+\begin{longtable}{|p{4cm}|p{9cm}|}
+
+\hline
+\textbf{تکنولوژی} & \textbf{منابع مطالعه‌شده} \\
+\hline
+
+Apache Airflow &
+\url{https://airflow.apache.org/docs/}
+\\
+\hline
+
+MLflow &
+\url{https://mlflow.org/docs/latest/}
+\\
+\hline
+
+FastAPI &
+\url{https://fastapi.tiangolo.com/}
+\\
+\hline
+
+Redis &
+\url{https://redis.io/docs/}
+\\
+\hline
+
+TSETMC Data Sources &
+pytsetmc, tsetmc-api
+\\
+\hline
+
+\end{longtable}
+
+%===================================================
+
+\section{تقسیم وظایف اعضای تیم}
+
+به‌منظور توسعه ساختاریافته پروژه، مسئولیت‌ها بر اساس تخصص اعضا تقسیم شده است.
+
+\begin{table}[h]
+
+\centering
+
+\begin{tabular}{|p{4cm}|p{8cm}|}
+
+\hline
+
+\textbf{عضو تیم} & \textbf{مسئولیت‌ها} \\
+
+\hline
+
+مهیار قاسمی &
+طراحی معماری سیستم، طراحی DAGهای Airflow، زمان‌بندی Workflowها، طراحی وابستگی Taskها، بهینه‌سازی معماری
+\\
+
+\hline
+
+محمد حسین صدیقی &
+تحلیل داده‌های بورس، Feature Engineering، طراحی اندیکاتورهای مالی، آموزش مدل‌ها، ارزیابی مدل
+\\
+
+\hline
+
+سامان زارع &
+طراحی Repository Structure، Docker Compose Infrastructure، توسعه FastAPI، Service Integration
+\\
+
+\hline
+
+\end{tabular}
+
+\end{table}
+
+%===================================================
+
+\section{نحوه همکاری تیم}
+
+برای مدیریت فرآیند توسعه نرم‌افزار، ساختار همکاری زیر انتخاب شده است:
+
+\begin{itemize}
+\item استفاده از GitHub Repository مشترک
+\item توسعه مبتنی بر Branch
+\item Pull Requests
+\item Code Review بین اعضا
+\item مستندسازی تغییرات
+\end{itemize}
+
+تقسیم کار پروژه به‌صورت ماژولار انجام شده تا امکان توسعه موازی بخش‌های مختلف توسط اعضای تیم فراهم شود.
+
+%===================================================
+
+\section{برنامه توسعه آینده پروژه}
+
+پروژه در هفته‌های آینده توسعه خواهد یافت.
+
+برنامه اولیه شامل:
+
+\begin{enumerate}
+\item MLflow Integration
+\item Model Registry
+\item Data Drift Detection
+\item Monitoring Dashboard
+\item CI/CD Pipeline
+\item Kubernetes Deployment
+\end{enumerate}
+
+%===================================================
+
+\section{جمع‌بندی}
+
+در این فاز اولیه، معماری یک سامانه \lr{MLOps} مبتنی بر Apache Airflow جهت تحلیل و پیش‌بینی داده‌های بازار بورس ایران طراحی شد.
+
+در این مرحله:
+
+\begin{itemize}
+\item معماری اولیه سیستم مشخص شد.
+\item تکنولوژی‌های اصلی انتخاب شدند.
+\item منابع مطالعاتی بررسی شدند.
+\item تقسیم وظایف بین اعضا انجام شد.
+\item زیرساخت اولیه Docker Compose تعریف گردید.
+\end{itemize}
+
+این ساختار امکان توسعه تدریجی پروژه در طول ترم را فراهم خواهد کرد.
+
+\end{document}

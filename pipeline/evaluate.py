@@ -1,0 +1,11 @@
+pandas
+numpy
+scikit-learn
+xgboost
+joblib
+ta
+matplotlib
+mlflow
+sqlalchemy
+psycopg2-binary
+requests

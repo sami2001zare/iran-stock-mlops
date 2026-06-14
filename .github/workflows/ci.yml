@@ -1,0 +1,21 @@
+name: Simple CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build and test
+        run: |
+          # Create dummy .env
+          echo "FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=" > .env
+          
+          # Build and test in one go
+          docker-compose build
+          docker-compose run --rm airflow-scheduler airflow dags list
+          
+          # Cleanup
+          docker-compose down

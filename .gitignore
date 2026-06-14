@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+
+# Airflow
+logs/
+airflow.cfg
+airflow.db
+*.pid
+
+# Docker
+.env
+.env.local
+docker-compose.override.yml
+
+# Hadoop/HDFS
+hdfs_data/
+hadoop_namenode/
+hadoop_datanode/
+
+# Databases
+postgres-db-volume/
+hive_data/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Generated files
+*.xlsx
+reports/*.html
+reports/*.pdf
+
+# Secrets
+*.pem
+*.key
+credentials.json

@@ -11,6 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create test environment
+        run: |
+          cat > .env << 'EOF'
+          AIRFLOW_UID=$(id -u)
+          FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+          _AIRFLOW_WWW_USER_USERNAME=airflow
+          _AIRFLOW_WWW_USER_PASSWORD=airflow
+          EOF
       
       - name: Build and test
         run: |

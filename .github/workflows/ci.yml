@@ -15,7 +15,7 @@ jobs:
       - name: Create test environment
         run: |
           cat > .env << 'EOF'
-          AIRFLOW_UID=$(id -u)
+          AIRFLOW_UID=50000
           FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
           _AIRFLOW_WWW_USER_USERNAME=airflow
           _AIRFLOW_WWW_USER_PASSWORD=airflow

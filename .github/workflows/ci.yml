@@ -1,6 +1,10 @@
 name: Simple CI
 
-on: [push, pull_request]
+on: 
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   test:
@@ -10,12 +14,9 @@ jobs:
       
       - name: Build and test
         run: |
-          # Create dummy .env
-          echo "FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=" > .env
-          
           # Build and test in one go
-          docker-compose build
-          docker-compose run --rm airflow-scheduler airflow dags list
+          docker compose build
+          docker compose run --rm airflow-scheduler airflow dags list
           
           # Cleanup
           docker-compose down

@@ -28,4 +28,4 @@ jobs:
           docker compose run --rm airflow-scheduler airflow dags list
           
           # Cleanup
-          docker-compose down
+          docker compose down

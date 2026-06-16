@@ -1,0 +1,129 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{xepersian}
+\settextfont{B Nazanin}
+\setlatintextfont{Times New Roman}
+\title{گزارش عملیاتی پروژه: راه‌اندازی Airflow با Hadoop و خودکارسازی پردازش داده‌های بورس}
+
+
+\begin{document}
+\maketitle
+
+\section{خلاصه پروژه}
+هدف این پروژه، طراحی و پیاده‌سازی یک خط لوله پردازش داده (Data Pipeline) با استفاده از \lr{Apache Airflow} به همراه \lr{Apache Hadoop (HDFS)} جهت بارگیری، تبدیل و بارگذاری خودکار فایل‌های روزانه داده‌های بورس تهران بود. داده‌ها از وب‌سایت \lr{TSETMC} به صورت فایل \lr{Excel} دریافت می‌شوند، سپس با پایتون (\lr{pandas}، \lr{jdatetime}، \lr{openpyxl}) پالایش و به فرمت \lr{CSV} تبدیل شده و نهایتاً در \lr{HDFS} ذخیره می‌شوند. زیرساخت با \lr{Docker Compose} شامل سرویس‌های \lr{Airflow} (\lr{CeleryExecutor}، \lr{Redis}، \lr{PostgreSQL}) و \lr{Hadoop} (\lr{NameNode}، \lr{DataNode}، \lr{ResourceManager}، \lr{NodeManager}) و همچنین \lr{Hive Metastore} پیاده‌سازی گردید.
+
+\section{معماری و اجزای مستقرشده}
+\subsection{سرویس‌های Airflow}
+\begin{itemize}
+\item \lr{Webserver (api-server)}: مدیریت رابط کاربری و \lr{API} با پورت ۸۰۸۰.
+\item \lr{Scheduler}: زمانبندی و اجرای \lr{DAG}ها.
+\item \lr{DAG Processor}: پردازش فایل‌های \lr{DAG}.
+\item \lr{Worker (Celery)}: اجرای تسک‌ها در حالت توزیع‌شده.
+\item \lr{Triggerer}: مدیریت تسک‌های ناهمگام (deferrable).
+\item \lr{Init Container}: مقداردهی اولیه دیتابیس و ایجاد کاربر ادمین.
+\item \lr{Redis}: پیام‌رسان برای \lr{Celery}.
+\item \lr{PostgreSQL}: ذخیره‌سازی متادیتا.
+\end{itemize}
+
+\subsection{سرویس‌های Hadoop}
+\begin{itemize}
+\item \lr{NameNode}: مدیریت فضای نام \lr{HDFS} (پورت‌های ۹۸۷۰، ۹۰۰۰).
+\item \lr{DataNode}: ذخیره‌سازی بلوک‌های داده (پورت ۹۸۶۴).
+\item \lr{ResourceManager}، \lr{NodeManager}: مدیریت منابع \lr{YARN}.
+\item \lr{HistoryServer}: نگهداری لاگ‌های اجرا.
+\end{itemize}
+
+\subsection{سرویس‌های کمکی}
+\begin{itemize}
+\item \lr{Hive Metastore + PostgreSQL}: ذخیره‌سازی متادیتای \lr{Hive} (در حال حاضر در \lr{DAG}ها استفاده نشده، اما برای توسعه آتی در نظر گرفته شد).
+\end{itemize}
+
+\subsection{Volume دائمی}
+\begin{itemize}
+\item \lr{postgres-db-volume}
+\item \lr{hadoop\_namenode}، \lr{hadoop\_datanode}، \lr{hadoop\_historyserver}
+\item \lr{hive\_data}
+\end{itemize}
+
+\section{چالش‌های اصلی و راه‌حل‌ها}
+در طول پیاده‌سازی، چندین چالش عمده ظاهر شد که در ادامه تشریح می‌شود.
+
+\subsection{تغییرات اساسی در Airflow نسخه ۳.۲.۲ نسبت به نگارش‌های قبلی}
+\textbf{مشکل:} استفاده از \lr{apache/airflow:latest} که در زمان پروژه به نسخه \lr{pre-release} \textbf{۳.۲.۲} با پایتون ۳.۱۳ اشاره داشت. این نسخه تغییرات غیرسازگار زیر را اعمال کرده بود:
+\begin{itemize}
+\item حذف دستور \lr{airflow webserver} و جایگزینی با \lr{api-server}.
+\item تغییر \lr{schedule\_interval} به \lr{schedule} در تعریف \lr{DAG}.
+\item انتقال عملگرها به فضای نام \lr{airflow.providers.standard.*} (مثلاً \lr{BashOperator} دیگر در \lr{airflow.operators.bash\_operator} وجود نداشت).
+\item عدم پشتیبانی از \lr{provide\_context} و \lr{utils.dates.days\_ago}.
+\end{itemize}
+\textbf{راه‌حل:} کد تمام \lr{DAG}ها (نسخه‌های v0 تا v6) مطابق با \lr{API} جدید بازنویسی شد. همچنین دستور \lr{airflow webserver} در \lr{docker-compose} به \lr{api-server} تغییر یافت. متغیر \lr{start\_date} از \lr{days\_ago} به یک تاریخ ثابت (مثل \lr{datetime(2024,1,1)}) اصلاح شد.
+
+\subsection{عدم وجود ماژول‌های پایتون مورد نیاز (jdatetime, pandas, openpyxl, azure-storage-blob) در تصویر پایه Airflow}
+\textbf{مشکل:} اجرای \lr{DAG}ها با خطای \lr{ModuleNotFoundError} مواجه می‌شد. \\
+\textbf{راه‌حل:} ساخت یک \lr{Dockerfile} سفارشی که این بسته‌ها را نصب کند. در ابتدا از \lr{pip install} ساده استفاده شد اما به دلیل کمبود کامپایلر \lr{C++} و مشکلات گواهی‌نامه \lr{Kerberos} برای \lr{HDFS}، فرایند \lr{build} با شکست مواجه شد.
+
+\subsection{نصب \lr{apache-airflow-providers-apache-hdfs} و وابستگی‌های Kerberos}
+\textbf{مشکل:} بسته \lr{apache-airflow-providers-apache-hdfs} به \lr{gssapi} وابسته است که نیاز به \lr{krb5-config} و کتابخانه‌های توسعه \lr{Kerberos} دارد. در حین نصب با خطای \lr{krb5-config: Permission denied} و سپس \lr{No such file or directory} مواجه شدیم. \\
+\textbf{راه‌حل:} ابتدا در \lr{Dockerfile} بسته‌های \lr{libkrb5-dev}، \lr{krb5-multidev}، \lr{krb5-user} و \lr{pkg-config} نصب شدند. سپس مسیر \lr{krb5-config} بررسی و دسترسی آن اصلاح گردید. همچنین به عنوان راه‌کار جایگزین، از متغیر محیطی \lr{\_PIP\_ADDITIONAL\_REQUIREMENTS} در \lr{docker-compose} استفاده شد تا نصب بسته در زمان اجرا (با دسترسی روت) انجام شود. \\
+\textbf{نکته:} با توجه به اینکه پایتون ۳.۱۳ بسیار جدید است و برخی بسته‌ها هنوز \lr{wheel} رسمی ندارند، فرایند \lr{build} زمان‌بر بود. در نهایت با قید نسخه پایدارتر \lr{provider} (مثلاً \lr{apache-airflow-providers-apache-hdfs==4.1.0}) مشکل برطرف گردید.
+
+\subsection{سازگاری Hadoop با Airflow و تعریف Connection}
+\textbf{مشکل:} \lr{DAG}ها از \lr{WebHDFSHook} برای بارگذاری فایل در \lr{HDFS} استفاده می‌کنند، اما اتصال \lr{webhdfs\_default} در \lr{Airflow} تعریف نشده بود. \\
+\textbf{راه‌حل:} در بخش \lr{airflow-common-env} خط زیر اضافه شد:
+\begin{latin}
+\begin{verbatim}
+AIRFLOW_CONN_WEBHDFS_DEFAULT: 'webhdfs://namenode:9870'
+\end{verbatim}
+\end{latin}
+همچنین در \lr{Dockerfile}، بسته \lr{apache-airflow-providers-apache-hdfs} نصب شد تا \lr{Hook} مربوطه در دسترس باشد.
+
+\subsection{متغیرهای Airflow (Variables) و خطای Variable not found}
+\textbf{مشکل:} \lr{DAG} نسخه ۶ برای دریافت مسیرها و نام فایل‌ها از متغیرهای \lr{Airflow} استفاده می‌کرد. در اولین بار اجرا، این متغیرها وجود نداشتند و باعث شکست بارگذاری \lr{DAG} می‌شدند. \\
+\textbf{راه‌حل:} در کد \lr{DAG}، از \lr{Variable.get(key, default\_var='...')} با مقدار پیش‌فرض استفاده شد تا در صورت نبود متغیر، \lr{DAG} همچنان قابل بارگذاری باشد. سپس متغیرها از طریق رابط کاربری \lr{Airflow} (\lr{Admin → Variables}) ایجاد شدند.
+
+\subsection{خطای \lr{DAG.\_\_init\_\_() got an unexpected keyword argument 'schedule\_interval'} در Airflow 3.x}
+\textbf{مشکل:} پارامتر \lr{schedule\_interval} در \lr{Airflow 3.x} منسوخ شده و باید از \lr{schedule} استفاده کرد. \\
+\textbf{راه‌حل:} تمام تعاریف \lr{DAG} به شکل زیر اصلاح شدند:
+\begin{latin}
+\begin{verbatim}
+dag = DAG(
+    dag_id="Stock-Exchange-V6",
+    schedule="0 13 * * 6,0-3",
+    catchup=True,
+    default_args=default_args,
+)
+\end{verbatim}
+\end{latin}
+
+\subsection{حجم بالای منابع مورد نیاز برای اجرای همزمان Airflow + Hadoop}
+\textbf{مشکل:} اجرای همزمان ۶ سرویس \lr{Airflow} (webserver, scheduler, worker, triggerer, dag‑processor, flower) به همراه ۵ سرویس \lr{Hadoop} (namenode, datanode, resourcemanager, nodemanager, historyserver) و \lr{Hive}، حافظه و \lr{CPU} زیادی مصرف می‌کرد. روی سیستم با ۸ گیگ رم، کانتینرها مدام با خطای \lr{OOM} مواجه می‌شدند. \\
+\textbf{راه‌حل:} با کاهش موقت تعداد سرویس‌های غیرضروری (مانند \lr{Hive}) و تخصیص حداقل ۱۲ گیگ رم به \lr{Docker Desktop} (در تنظیمات) مشکل برطرف شد. همچنین از پروفایل \lr{flower} برای اجرای اختیاری \lr{Flower} استفاده گردید.
+
+\section{چالش‌های عملیاتی در بستر Docker (ویندوز)}
+\begin{itemize}
+\item \textbf{مشکل مسیرهای mount:} استفاده از پوشه‌های دارای فاصله یا کاراکترهای ویژه (@، پرانتز) در ویندوز باعث خطای \lr{error while creating mount source path} می‌شد. با انتقال پروژه به مسیری بدون فاصله (مثلاً \lr{C:\textbackslash airflow-project}) مشکل حل شد.
+\item \textbf{اجرای دستورات لینوکسی در PowerShell:} دستوراتی مانند \lr{grep} شناسایی نمی‌شدند. از \lr{findstr} یا استفاده از \lr{bash} در داخل کانتینر استفاده گردید.
+\item \textbf{دسترسی pip برای کاربر airflow:} در حین \lr{debug} با خطای \lr{Permission denied} مواجه شدیم؛ با سوئیچ به کاربر \lr{root} از طریق \lr{docker-compose exec --user root ...} بررسی انجام شد.
+\end{itemize}
+
+\section{دستاوردها و وضعیت نهایی}
+\begin{itemize}
+\item \textbf{۶ \lr{DAG} عملیاتی} آماده‌سازی شد (از v0 تا v6) که شامل مراحل: بارگیری فایل \lr{Excel}، صبر برای وجود فایل، تبدیل به \lr{CSV} (با فیلتر رکوردها براساس نماد)، بارگذاری در \lr{HDFS} و حذف فایل‌های موقت می‌باشد.
+\item \textbf{یکپارچگی \lr{Airflow} با \lr{Hadoop}} از طریق \lr{WebHDFS} برقرار گردید. با تعریف \lr{Connection} مناسب، امکان استفاده از \lr{WebHDFSHook} در عملگرهای \lr{Python} فراهم شد.
+\item \textbf{مدیریت متغیرها و backfill} پیاده‌سازی شد: \lr{DAG} نسخه ۵ و ۶ از \lr{catchup=True} و \lr{ds} برای پردازش روزهای عقب‌افتاده استفاده می‌کنند.
+\item \textbf{ساختار ماژولار با \lr{Docker Compose}} شامل سرویس‌های اصلی به همراه هشدارهای سلامت (healthcheck) و وابستگی‌های صحیح (depends\_on).
+\end{itemize}
+
+\section{پیشنهادات برای بهبود و تولید (Production)}
+\begin{enumerate}
+\item استفاده از \lr{Airflow} نسخه ۲.۱۰.۳ به جای ۳.۲.۲ – به دلیل پایداری بیشتر و سازگاری بهتر با \lr{provider}های جانبی (\lr{HDFS}, \lr{Azure}). در صورت تمایل به قابلیت‌های جدید \lr{Airflow 3.x}، منتظر انتشار نسخه نهایی و به‌روزرسانی \lr{provider}ها باشید.
+\item تفکیک منابع – اجرای \lr{Hadoop} و \lr{Airflow} روی دو ماشین مجزا یا استفاده از \lr{Kubernetes} برای مدیریت بهتر منابع.
+\item رمزگذاری ارتباطات – فعال‌سازی \lr{Kerberos} برای \lr{HDFS} و استفاده از \lr{JWT} یا \lr{OAuth} برای \lr{API} \lr{Airflow}.
+\item مدیریت لاگ‌ها – پیکربندی ارسال لاگ‌ها به \lr{Elasticsearch} یا \lr{S3}.
+\item استفاده از \lr{\_PIP\_ADDITIONAL\_REQUIREMENTS} فقط برای توسعه – در محیط تولید، تصاویر سفارشی با بسته‌های از پیش نصب شده استفاده شود تا از تأخیر در راه‌اندازی جلوگیری گردد.
+\item پایش (Monitoring) – اضافه کردن \lr{Prometheus + Grafana} برای نظارت بر صف \lr{Celery} و وضعیت \lr{HDFS}.
+\end{enumerate}
+
+\section{جمع‌بندی}
+پروژه با موفقیت توانست خط لوله پردازش خودکار داده‌های بورس را از مرحله دریافت تا ذخیره‌سازی در \lr{HDFS} پیاده‌سازی کند. با وجود چالش‌های متعدد ناشی از تغییرات نسخه \lr{Airflow}، وابستگی‌های کربروس و محدودیت منابع، تمام موانع با روش‌های ذکر شده رفع گردید. کدهای \lr{DAG}، \lr{Dockerfile} و فایل \lr{docker-compose} آماده استفاده در محیط‌های مشابه هستند و قابلیت توسعه (مثلاً اتصال به \lr{Hive} یا \lr{Spark}) را دارند.
+
+\end{document}

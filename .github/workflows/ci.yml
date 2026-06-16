@@ -1,18 +1,18 @@
-name: Simple CI
+name: CI / CD
 
-on: 
+on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  test:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create test environment
+      - name: Create .env
         run: |
           cat > .env << 'EOF'
           AIRFLOW_UID=50000
@@ -20,12 +20,13 @@ jobs:
           _AIRFLOW_WWW_USER_USERNAME=airflow
           _AIRFLOW_WWW_USER_PASSWORD=airflow
           EOF
-      
-      - name: Build and test
-        run: |
-          # Build and test in one go
-          docker compose build
-          docker compose run --rm airflow-scheduler airflow dags list
-          
-          # Cleanup
-          docker compose down
+
+      - name: Build all images
+        run: docker compose build
+
+      - name: Run tests + DAG validation
+        run: docker compose --profile ci run --rm tests
+
+      - name: Cleanup
+        if: always()
+        run: docker compose --profile ci down -v

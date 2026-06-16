@@ -27,11 +27,14 @@ x-airflow-common:
     # _PIP_ADDITIONAL_REQUIREMENTS: jdatetime pandas openpyxl azure-storage-blob
     # The following line can be used to set a custom config file, stored in the local config folder
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+    PYTHONPATH: '/opt/airflow/model'
+    MLFLOW_TRACKING_URI: 'http://mlflow:5000'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    - ${AIRFLOW_PROJ_DIR:-.}/model:/opt/airflow/model
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -49,6 +52,7 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
+      - ${AIRFLOW_PROJ_DIR:-.}/scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
@@ -74,7 +78,7 @@ services:
     <<: *airflow-common
     command: api-server
     ports:
-      - "8080:8080"
+      - "${AIRFLOW_PORT:-8085}:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
       interval: 30s
@@ -318,6 +322,72 @@ services:
     env_file:
       - ./hadoop.env
   
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql+psycopg2://airflow:airflow@postgres/mlflow
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "${MLFLOW_PORT:-5001}:5000"
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: fastapi
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${FASTAPI_PORT:-8000}:8000"
+    environment:
+      ETH_MODEL_DIR:       '/model/eth_model_artifacts'
+      MLFLOW_TRACKING_URI: 'http://mlflow:5000'
+      MLFLOW_MODEL_NAME:   'ETHPricePredictor'
+      PSI_THRESHOLD:       '0.2'
+      PYTHONPATH:          '/app:/model'
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/model:/model
+      - ${AIRFLOW_PROJ_DIR:-.}/api/main.py:/app/main.py
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: always
+
+  tests:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: tests
+    profiles: [ci]
+    command: pytest /tests/ -v --tb=short
+    environment:
+      PYTHONPATH: '/model:/app'
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/model:/model
+      - ${AIRFLOW_PROJ_DIR:-.}/tests:/tests
+      - ${AIRFLOW_PROJ_DIR:-.}/api/main.py:/app/main.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+
   resourcemanager:
     image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
     container_name: resourcemanager
@@ -393,6 +463,7 @@ services:
 
 volumes:
   postgres-db-volume:
+  mlflow-artifacts:
   hive_data:
   hadoop_historyserver:
   hadoop_datanode:

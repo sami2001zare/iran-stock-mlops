@@ -1,0 +1,32 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env
+        run: |
+          cat > .env << 'EOF'
+          AIRFLOW_UID=50000
+          FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+          _AIRFLOW_WWW_USER_USERNAME=airflow
+          _AIRFLOW_WWW_USER_PASSWORD=airflow
+          EOF
+
+      - name: Build all images
+        run: docker compose build
+
+      - name: Run tests + DAG validation
+        run: docker compose --profile ci run --rm tests
+
+      - name: Cleanup
+        if: always()
+        run: docker compose --profile ci down -v

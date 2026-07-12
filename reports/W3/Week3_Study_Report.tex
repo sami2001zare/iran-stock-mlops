@@ -1,0 +1,271 @@
+% !TEX program = xelatex
+% !TEX encoding = UTF-8
+\documentclass[12pt,a4paper]{report}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage[hidelinks,colorlinks=false]{hyperref}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+
+\setdefaultlanguage[numerals=english]{persian}
+\setotherlanguage{english}
+\onehalfspacing
+
+\newcommand{\eng}[1]{\textenglish{#1}}
+
+\newtcolorbox{infobox}[1]{
+	colback=green!5!white,
+	colframe=green!75!black,
+	title=#1,
+	fonttitle=\bfseries,
+	rounded corners,
+	boxrule=1pt
+}
+\newtcolorbox{definitionbox}[1]{
+	colback=blue!5!white,
+	colframe=blue!75!black,
+	title=#1,
+	fonttitle=\bfseries,
+	rounded corners,
+	boxrule=1pt
+}
+
+\titleformat{\chapter}[hang]
+{\normalfont\fontsize{16}{20}\bfseries}
+{فصل \thechapter\ }{0pt}{\fontsize{16}{20}\bfseries}
+\titleformat{\section}
+{\normalfont\fontsize{13}{17}\bfseries}
+{\thesection}{1em}{}
+\titleformat{\subsection}
+{\normalfont\fontsize{12}{16}\bfseries}
+{\thesubsection}{1em}{}
+
+\renewcommand{\normalsize}{\fontsize{11}{16}\selectfont}
+\setlist[itemize]{label={\textbullet}, leftmargin=2em}
+\setlist[enumerate]{label={\arabic*.}, leftmargin=2em}
+
+\setmainfont[Scale=1.0,
+Path = /usr/share/fonts/vazir-font-v16.1.0/,
+UprightFont = Vazir-Medium.ttf,
+BoldFont = Vazir-Bold.ttf,
+Script=Arabic,
+Renderer=Harfbuzz
+]{Vazir}
+
+\geometry{
+	a4paper,
+	left=2.5cm,
+	right=2cm,
+	top=2.5cm,
+	bottom=2.5cm
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\vspace{0.2cm}\hspace{0.5cm}\rightmark\hspace{0.5cm}\vspace{0.2cm}}
+\fancyhead[R]{\vspace{0.2cm}\hspace{0.5cm}\leftmark\hspace{0.5cm}\vspace{0.2cm}}
+\fancyfoot[L]{\vspace{0.2cm}\hspace{0.5cm}\thepage\hspace{0.5cm}\vspace{0.2cm}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\setlength{\headheight}{20pt}
+\setlength{\headsep}{25pt}
+\setlength{\footskip}{25pt}
+
+\begin{document}
+	
+	\begin{titlepage}
+		\thispagestyle{empty}
+		\centering
+		
+		{\fontsize{22}{28}\selectfont\textbf{گزارش مطالعه هفته سوم}}\\[0.8cm]
+		\rule{\textwidth}{1.5pt}\\[1cm]
+		
+		{\Large\textbf{بهینه‌سازی و استقرار مدل در تولید}}\\[0.5cm]
+		{\large(\eng{Model Optimization and Deployment})}\\[2.5cm]
+		
+		\begin{minipage}{0.7\textwidth}
+			\centering
+			\rule{0.8\textwidth}{0.5pt}\\[0.5cm]
+			\textbf{نام و نام خانوادگی:}\\[0.3cm]
+			\textnormal{محمد حسین صدیقی}\\[0.3cm]
+			\textnormal{سامان زارع}\\[0.3cm]
+			\textnormal{مهیار قاسمی}\\[0.8cm]
+			\rule{0.8\textwidth}{0.5pt}
+		\end{minipage}\\[2.5cm]
+		
+		\textbf{دستیار آموزشی:}\\
+		\textnormal{حانیه خاکشور}\\[1cm]
+		
+		\textbf{درس: مباحث ویژه (پردازش زبان طبیعی)}\\
+		\textnormal{نیمسال دوم \eng{1405-1404}}\\[1cm]
+		\vfill
+	\end{titlepage}
+	
+	\newpage
+	\tableofcontents
+	\newpage
+	
+	\chapter{مقدمه}
+	
+	\section{منابع مطالعه شده در هفته سوم}
+	بر اساس برنامه پروژه \eng{MLOps} ارائه شده در فایل \eng{MLOps.pdf}، در هفته سوم تمرکز بر روی استقرار مدل در محیط تولید و بهینه‌سازی سرعت بوده است. منابع مطالعه شده توسط اعضای گروه عبارتند از:
+	
+	\begin{itemize}
+		\item \textbf{فصل ۲۲ کتاب \eng{Machine Learning Q and AI}}: این فصل به تکنیک‌های افزایش سرعت استنتاج مدل‌های یادگیری ماشین می‌پردازد.
+		\item \textbf{مستندات رسمی \eng{FastAPI}}: برای یادگیری ساخت \eng{API}های کارآمد و مستندسازی خودکار.
+		\item \textbf{مستندات رسمی \eng{Docker}}: برای آشنایی با کانتینری‌سازی و مفاهیم پایه آن.
+		\item \textbf{ویدئوها و مقالات آموزشی} پیرامون تکنیک‌های \eng{Batching}، \eng{Vectorization} و \eng{Quantization} که در فصل ۲۲ کتاب به آن‌ها اشاره شده است.
+	\end{itemize}
+	
+	\section{هدف مطالعه}
+	هدف از مطالعه این منابع، کسب دانش نظری و عملی لازم برای استقرار مدل‌های یادگیری ماشین در محیط تولید و بهینه‌سازی آن‌ها از نظر سرعت، حافظه و قابلیت اطمینان بود. در این گزارش، خلاصه‌ای از مهم‌ترین مفاهیم آموخته شده ارائه می‌گردد.
+	
+	\begin{infobox}{استعاره هفته سوم}
+		در توضیحات پروژه آمده است: \emph{«حالا تیم شما مانند مدیر یک پست سریع است که باید سفارش‌ها را سریع و بدون اشتباه تحویل دهد؛ اگر مدل کند باشد، مشتری صبر نمی‌کند.»} این دقیقاً همان چیزی است که در این هفته آموختیم: چگونه یک مدل را سریع و کارآمد به مشتری برسانیم.
+	\end{infobox}
+	
+	\chapter{مفاهیم کلیدی از فصل ۲۲ کتاب Machine Learning Q and AI}
+	
+	\section{معرفی فصل}
+	فصل ۲۲ کتاب \eng{Machine Learning Q and AI} به بررسی چالش‌های سرعت در مدل‌های بزرگ و راهکارهای عملی برای افزایش سرعت استنتاج (\eng{Inference}) می‌پردازد. این فصل سه سطح بهینه‌سازی را معرفی می‌کند:
+	
+	\subsection{سطح اول: بهینه‌سازی نرم‌افزاری با Batching و Vectorization}
+	\begin{description}
+		\item[\eng{Batching} (پردازش دسته‌ای)]: به جای ارسال یک نمونه به مدل، چندین نمونه را به صورت همزمان ارسال می‌کنیم. این کار باعث می‌شود از قابلیت موازی‌سازی سخت‌افزار (مانند \eng{GPU}) بهره ببریم و سربار انتقال داده کاهش یابد. در متن کتاب، مثال واضحی از پردازش دسته‌ای برای ترجمه ماشینی و تحلیل احساسات آورده شده است.
+		\item[\eng{Vectorization} (برداری‌سازی)]: تبدیل عملیات‌های حلقه‌ای به عملیات ماتریسی و برداری. کتابخانه‌هایی مانند \eng{NumPy} و \eng{PyTorch} این عملیات را به صورت بهینه در سطح \eng{C} پیاده‌سازی کرده‌اند. برداری‌سازی به ویژه در مرحله پیش‌پردازش و توکن‌سازی بسیار مؤثر است.
+	\end{description}
+	
+	\subsection{سطح دوم: بهینه‌سازی حافظه و محاسبات با Quantization}
+	\eng{Quantization} (کوانتیزاسیون) فرآیند کاهش دقت اعداد اعشاری (مثلاً از \eng{32-bit} به \eng{8-bit}) است. این کار باعث می‌شود:
+	\begin{itemize}
+		\item حجم مدل حدود \eng{75\%} کاهش یابد.
+		\item سرعت استنتاج به شدت افزایش یابد (چون عملیات روی اعداد صحیح سریع‌تر است).
+		\item مصرف حافظه کاهش یابد.
+	\end{itemize}
+	کتاب هشدار می‌دهد که کوانتیزاسیون ممکن است باعث افت جزئی دقت (معمولاً کمتر از \eng{1\%}) شود، بنابراین باید این افت را در مقابل بهبود سرعت سنجید.
+	
+	\subsection{سطح سوم: تکنیک‌های پیشرفته}
+	در این سطح به تکنیک‌هایی مانند \eng{Pruning} (حذف وزن‌های کم‌اهمیت) و \eng{Knowledge Distillation} (آموزش یک مدل کوچک برای تقلید از مدل بزرگ) اشاره شده است. این تکنیک‌ها پیچیده‌تر هستند و در صورت نیاز می‌توان از آن‌ها استفاده کرد.
+	
+	\section{نکات عملی از کتاب}
+	\begin{itemize}
+		\item \textbf{اندازه‌گیری baseline}: قبل از هرگونه بهینه‌سازی، باید زمان و حافظه مصرفی مدل اصلی را ثبت کرد.
+		\item \textbf{آزمایش تدریجی}: ابتدا پردازش دسته‌ای را فعال کنید و بهبود را اندازه بگیرید، سپس کوانتیزاسیون را اعمال کنید.
+		\item \textbf{ثبت نتایج}: نتایج هر تکنیک باید در جدولی مقایسه شود تا میزان بهبود سرعت و کاهش حجم مدل مشخص گردد.
+	\end{itemize}
+	
+	\chapter{استقرار مدل با FastAPI (مطالعه مستندات)}
+	
+	\section{آشنایی با FastAPI}
+	\eng{FastAPI} یک فریمورک مدرن و پرسرعت برای ساخت \eng{API} با زبان پایتون است. اعضای گروه با مطالعه مستندات رسمی، با ویژگی‌های کلیدی زیر آشنا شدند:
+	
+	\begin{itemize}
+		\item \textbf{سرعت بسیار بالا}: عملکردی قابل مقایسه با \eng{Node.js} و \eng{Go} به دلیل استفاده از \eng{ASGI} (سرور ناهمگام).
+		\item \textbf{مستندسازی خودکار}: تولید خودکار مستندات \eng{Swagger} و \eng{Redoc} بر اساس نوع‌دهی (\eng{Type Hints}) پایتون.
+		\item \textbf{اعتبارسنجی خودکار داده‌ها}: با استفاده از مدل‌های \eng{Pydantic}، داده‌های ورودی به طور خودکار بررسی می‌شوند.
+		\item \textbf{پشتیبانی از برنامه‌نویسی ناهمگام (\eng{Async})}: امکان مدیریت همزمان هزاران درخواست بدون阻塞.
+	\end{itemize}
+	
+	\section{مفاهیم اصلی در FastAPI}
+	\begin{description}
+		\item[\eng{Endpoint}] : مسیرهای \eng{URL} که هر کدام عملیات خاصی را انجام می‌دهند (مانند \eng{/predict}).
+		\item[\eng{Path Parameter} و \eng{Query Parameter}] : روش‌های دریافت داده از مسیر یا پارامترهای جستجو.
+		\item[\eng{Request Body}] : داده‌هایی که در بدنه درخواست \eng{POST} ارسال می‌شوند (معمولاً به صورت \eng{JSON}).
+		\item[\eng{Response Model}] : تعیین ساختار داده‌ای که سرویس برمی‌گرداند.
+		\item[\eng{Dependency Injection}] : مکانیزمی برای به اشتراک گذاری منطق مشترک بین اندپوینت‌ها (مانند بررسی احراز هویت).
+	\end{description}
+	
+	\section{نکات مهم از مستندات}
+	\begin{itemize}
+		\item استفاده از \eng{Type Hints} باعث می‌شود ویرایشگرها و \eng{IDE}ها تکمیل خودکار و تشخیص خطا را بهتر انجام دهند.
+		\item برای بهبود امنیت، همیشه ورودی‌ها را اعتبارسنجی کنید و از مدل‌های \eng{Pydantic} استفاده کنید.
+		\item برای بارگذاری مدل‌های سنگین (مانند مدل‌های یادگیری عمیق) از رویداد \eng{startup} استفاده کنید تا مدل فقط یک بار بارگذاری شود.
+	\end{itemize}
+	
+	\chapter{کانتینری‌سازی با Docker (مطالعه مستندات)}
+	
+	\section{مفاهیم پایه Docker}
+	\eng{Docker} یک پلتفرم متن‌باز برای خودکارسازی استقرار برنامه‌ها درون کانتینرها است. کانتینرها محیط‌های ایزوله و سبکی هستند که برنامه را به همراه تمام وابستگی‌هایش打包 می‌کنند. اعضای گروه با مطالعه مستندات \eng{Docker}، مفاهیم زیر را فرا گرفتند:
+	
+	\begin{itemize}
+		\item \eng{Image}: یک قالب فقط خواندنی شامل دستورالعمل‌های ساخت کانتینر.
+		\item \eng{Container}: یک نمونه اجرایی از یک \eng{Image}.
+		\item \eng{Dockerfile}: یک فایل متنی شامل دستورات ساخت \eng{Image}.
+		\item \eng{Docker Hub}: مخزن عمومی برای به اشتراک گذاری \eng{Image}ها.
+	\end{itemize}
+	
+	\section{مزایای استفاده از Docker}
+	\begin{itemize}
+		\item \textbf{قابلیت حمل (\eng{Portability})}: اجرای یکسان بر روی ویندوز، لینوکس و مک.
+		\item \textbf{تکرارپذیری (\eng{Reproducibility})}: حذف مشکل معروف \emph{«روی دستگاه من کار می‌کند»}.
+		\item \textbf{ایزوله‌سازی}: جداسازی وابستگی‌های برنامه از سیستم میزبان.
+		\item \textbf{مقیاس‌پذیری}: امکان اجرای چندین نمونه از سرویس به راحتی با \eng{Docker Compose} یا \eng{Kubernetes}.
+	\end{itemize}
+	
+	\section{مفاهیم پیشرفته‌تر مطالعه شده}
+	\begin{itemize}
+		\item \textbf{لایه‌بندی (\eng{Layering})}: هر دستور در \eng{Dockerfile} یک لایه جدید ایجاد می‌کند. دستوراتی که به ندرت تغییر می‌کنند (مانند نصب وابستگی‌ها) باید در ابتدا قرار گیرند تا \eng{cache} مؤثر باشد.
+		\item \textbf{شبکه‌سازی در Docker}: آشنایی با شبکه‌های پیش‌فرض (bridge, host, none) و نحوه اتصال کانتینرها به یکدیگر.
+		\item \textbf{حجم‌ها (\eng{Volumes})}: مکانیزم ذخیره‌سازی داده‌ها به گونه‌ای که پس از حذف کانتینر از بین نروند.
+	\end{itemize}
+	
+	\chapter{تکنیک‌های بهینه‌سازی (بر اساس ویدئوها و مقالات)}
+	
+	\section{بررسی دقیق Batching}
+	در ویدئوها و مقالات مطالعه شده، مزایا و معایب \eng{Batching} به صورت عملی توضیح داده شده است:
+	
+	\begin{itemize}
+		\item \textbf{مزیت اصلی}: افزایش \eng{throughput} (تعداد نمونه پردازش شده در ثانیه). به عنوان مثال، با دسته ۳۲ تایی، \eng{throughput} می‌تواند تا \eng{5} برابر افزایش یابد.
+		\item \textbf{معایب}: تأخیر (\eng{latency}) اولین نمونه در دسته افزایش می‌یابد (زیرا باید منتظر تکمیل دسته بماند). همچنین مصرف حافظه با افزایش اندازه دسته بیشتر می‌شود.
+		\item \textbf{نکته کلیدی}: اندازه دسته بهینه باید با آزمون و خطا و با توجه به معماری مدل و سخت‌افزار تعیین شود.
+	\end{itemize}
+	
+	\section{بررسی دقیق Vectorization}
+	برداری‌سازی یکی از اصول اساسی در کتابخانه‌های محاسباتی مدرن است. در مقالات مطالعه شده، توضیح داده شده که:
+	
+	\begin{itemize}
+		\item \eng{NumPy} و \eng{PyTorch} عملیات برداری شده را با استفاده از \eng{BLAS} و \eng{LAPACK} (کتابخانه‌های بهینه ریاضی) پیاده‌سازی می‌کنند.
+		\item حتی روی \eng{CPU}، عملیات برداری شده می‌تواند ده‌ها برابر سریع‌تر از حلقه‌های پایتون باشد.
+		\item در پردازش زبان طبیعی، توکن‌سازی دسته‌ای و محاسبه همزمان ماتریس‌های وزن از مهم‌ترین کاربردهای برداری‌سازی هستند.
+	\end{itemize}
+	
+	\section{بررسی دقیق Quantization}
+	کوانتیزاسیون یکی از داغ‌ترین موضوعات بهینه‌سازی مدل است. مطالب مطالعه شده شامل موارد زیر بود:
+	
+	\begin{itemize}
+		\item \textbf{انواع کوانتیزاسیون}:
+		\begin{itemize}
+			\item \eng{Post-Training Quantization}: بدون نیاز به بازآموزی، مستقیماً روی مدل آموزش دیده اعمال می‌شود.
+			\item \eng{Quantization-Aware Training (QAT)}: در حین آموزش، اثر کوانتیزاسیون شبیه‌سازی می‌شود تا افت دقت به حداقل برسد.
+		\end{itemize}
+		\item \textbf{چالش‌ها}: برخی لایه‌ها (مانند \eng{LayerNorm} و \eng{Softmax}) با کوانتیزاسیون پویا سازگار نیستند و باید در دقت بالاتر باقی بمانند.
+		\item \textbf{نتایج عملی}: کاهش حجم مدل تا \eng{75\%} و افزایش سرعت تا \eng{3-4} برابر با افت دقت کمتر از \eng{1\%}.
+	\end{itemize}
+	
+	\chapter{جمع‌بندی و نتیجه‌گیری}
+	
+	\section{خلاصه آموخته‌ها}
+	در هفته سوم، اعضای گروه با مفاهیم زیر آشنا شدند:
+	
+	\begin{enumerate}
+		\item \textbf{بهینه‌سازی سرعت استنتاج}: آشنایی با سه سطح بهینه‌سازی (نرم‌افزاری، حافظه، معماری) و جزئیات \eng{Batching}، \eng{Vectorization} و \eng{Quantization} از فصل ۲۲ کتاب \eng{Machine Learning Q and AI}.
+		\item \textbf{استقرار با \eng{FastAPI}}: یادگیری نحوه ساخت \eng{API}های سریع با مستندسازی خودکار، اعتبارسنجی خودکار و پشتیبانی از برنامه‌نویسی ناهمگام.
+		\item \textbf{کانتینری‌سازی با \eng{Docker}}: درک مفاهیم \eng{Image}، \eng{Container}، \eng{Dockerfile} و مزایای استفاده از کانتینرها برای قابلیت حمل و تکرارپذیری.
+	\end{enumerate}
+	
+	\section{ارتباط با پروژه \eng{MLOps}}
+	این دانش دقیقاً متناسب با مرحله سوم پروژه \eng{MLOps} است: \emph{«مدل شما را وارد \eng{production} می‌کند. \eng{FastAPI} با \eng{REST API} استخراج شده و داخل یک \eng{Docker container} قرار می‌گیرد.»} همچنین تکنیک‌های بهینه‌سازی برای افزایش سرعت و کاهش حجم مدل، پاسخگوی نیاز به \emph{«پاسخگویی سریع و بدون اشتباه»} هستند.
+	
+	\section{تقدیر و تشکر}
+	از استاد محترم درس، سرکار خانم دکتر مهدیه قاسمی و دستیار آموزشی، خانم حانیه خاکشور که با راهنمایی‌های ارزشمند خود ما را در مسیر یادگیری یاری نمودند، صمیمانه سپاسگزاریم.
+	
+\end{document}

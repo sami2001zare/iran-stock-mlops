@@ -13,7 +13,7 @@ x-airflow-common:
     AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
@@ -391,9 +391,19 @@ services:
     ports:
       - "5433:5432"
 
+
+  # --------------------------- You Add Here --------------------------- #
+
+  # --------------------------- You Add Here --------------------------- #
+  
 volumes:
   postgres-db-volume:
   hive_data:
   hadoop_historyserver:
   hadoop_datanode:
   hadoop_namenode:
+
+
+  # --------------------------- You Add Here --------------------------- #
+
+  # --------------------------- You Add Here --------------------------- #

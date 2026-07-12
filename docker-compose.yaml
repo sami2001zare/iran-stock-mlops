@@ -55,14 +55,13 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
-      - ${AIRFLOW_PROJ_DIR:-.}/scripts:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
       retries: 5
       start_period: 5s
     restart: always
-
+    
   redis:
     image: redis:7.2-bookworm
     expose:

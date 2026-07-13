@@ -1,3 +1,8 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 1 Simplified DataOps Lakehouse Core
+# Minimal stack running Apache Airflow + MinIO + Redis + Postgres
+# to execute all DAG pipelines cleanly without unnecessary API/MLflow/OLAP overhead.
+# ─────────────────────────────────────────────────────────────────────────────
 x-airflow-common:
   &airflow-common
   image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2}
@@ -50,6 +55,7 @@ services:
   # ─────────────────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16
+    shm_size: 512m
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -110,6 +116,26 @@ services:
       mc mb --ignore-existing myminio/mlflow-artifacts &&
       echo 'Buckets configured successfully!'
       "
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    ports:
+      - "8123:8123"
+      - "9002:9000"
+    environment:
+      CLICKHOUSE_DB: quantitative_olap
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: always
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Apache Airflow Control Plane & Workers
@@ -220,8 +246,17 @@ services:
                 if not cur.fetchone():
                     cur.execute('CREATE DATABASE mlflow')
                     print('✅ Verified mlflow database exists.')
+                cur.execute(\"SELECT 1 FROM pg_database WHERE datname='quantitative_ts'\")
+                if not cur.fetchone():
+                    cur.execute('CREATE DATABASE quantitative_ts')
+                    print('✅ Created quantitative_ts database.')
+            conn_ts = psycopg2.connect('host=postgres user=airflow password=airflow dbname=quantitative_ts')
+            conn_ts.autocommit = True
+            with conn_ts.cursor() as cur_ts:
+                cur_ts.execute('CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;')
+                print('✅ Verified TimescaleDB extension enabled on quantitative_ts.')
         except Exception as e:
-            print('Postgres check notice:', e)
+            print('Postgres/Timescale check notice:', e)
         " || true
         /entrypoint airflow users create -u admin -p admin -r Admin -e admin@platform.ai -f Admin -l User || true
     environment:
@@ -235,6 +270,7 @@ services:
 volumes:
   postgres-db-volume:
   minio-data:
+  clickhouse-data:
   airflow-logs:
   airflow-config:
   airflow-plugins:

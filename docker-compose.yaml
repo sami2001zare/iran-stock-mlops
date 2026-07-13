@@ -20,19 +20,20 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
     PYTHONPATH: '/opt/airflow:/opt/airflow/src:/opt/airflow/model'
-    MLFLOW_TRACKING_URI: 'http://mlflow:5000'
     MINIO_ENDPOINT: 'http://minio:9000'
     AWS_ACCESS_KEY_ID: 'minioadmin'
     AWS_SECRET_ACCESS_KEY: 'minioadmin'
     AWS_DEFAULT_REGION: 'us-east-1'
     S3_BUCKET_LAKEHOUSE: 'lakehouse'
   volumes:
+    # Code & Artifact Folders (mounted from your Windows project root)
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
-    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
-    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/model:/opt/airflow/model
+    # Internal Docker Volumes (prevents Windows WSL 2 mount/permission conflicts)
+    - airflow-logs:/opt/airflow/logs
+    - airflow-config:/opt/airflow/config
+    - airflow-plugins:/opt/airflow/plugins
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -61,7 +62,7 @@ services:
       retries: 5
       start_period: 5s
     restart: always
-    
+
   redis:
     image: redis:7.2-bookworm
     expose:
@@ -110,28 +111,8 @@ services:
       echo 'Buckets configured successfully!'
       "
 
-  clickhouse:
-    image: clickhouse/clickhouse-server:24.3-alpine
-    ports:
-      - "8123:8123"
-      - "9002:9000"
-    environment:
-      CLICKHOUSE_DB: quantitative_olap
-      CLICKHOUSE_USER: default
-      CLICKHOUSE_PASSWORD: clickhouse
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: always
-
   # ─────────────────────────────────────────────────────────────────────────────
-  # Apache Airflow 3.x Control Plane & Workers
+  # Apache Airflow Control Plane & Workers
   # ─────────────────────────────────────────────────────────────────────────────
   airflow-apiserver:
     <<: *airflow-common
@@ -229,6 +210,19 @@ services:
         chown -v -R "${AIRFLOW_UID}:0" /opt/airflow/{logs,dags,plugins,config,src,model}
         /entrypoint airflow version
         /entrypoint airflow db migrate
+        python3 -c "
+        import psycopg2
+        try:
+            conn = psycopg2.connect('host=postgres user=airflow password=airflow dbname=airflow')
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(\"SELECT 1 FROM pg_database WHERE datname='mlflow'\")
+                if not cur.fetchone():
+                    cur.execute('CREATE DATABASE mlflow')
+                    print('✅ Verified mlflow database exists.')
+        except Exception as e:
+            print('Postgres check notice:', e)
+        " || true
         /entrypoint airflow users create -u admin -p admin -r Admin -e admin@platform.ai -f Admin -l User || true
     environment:
       <<: *airflow-common-env
@@ -238,108 +232,9 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
     user: "0:0"
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # MLOps Layer (MLflow & FastAPI Inference Engine)
-  # ─────────────────────────────────────────────────────────────────────────────
-  mlflow:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: mlflow
-    command: >
-      mlflow server
-      --host 0.0.0.0 --port 5000
-      --backend-store-uri postgresql+psycopg2://airflow:airflow@postgres/mlflow
-      --default-artifact-root /mlflow/artifacts
-    ports:
-      - "${MLFLOW_PORT:-5001}:5000"
-    volumes:
-      - mlflow-artifacts:/mlflow/artifacts
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: always
-
-  fastapi:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: fastapi
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "${FASTAPI_PORT:-8000}:8000"
-    environment:
-      ETH_MODEL_DIR:       '/model/eth_model_artifacts'
-      MLFLOW_TRACKING_URI: 'http://mlflow:5000'
-      MLFLOW_MODEL_NAME:   'ETHPricePredictor'
-      PSI_THRESHOLD:       '0.20'
-      REDIS_URL:           'redis://redis:6379/0'
-      PYTHONPATH:          '/app:/model:/src'
-    volumes:
-      - ${AIRFLOW_PROJ_DIR:-.}/model:/model
-      - ${AIRFLOW_PROJ_DIR:-.}/src:/src
-      - ${AIRFLOW_PROJ_DIR:-.}/api:/app
-    depends_on:
-      mlflow:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: always
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Observability Layer (Prometheus & Grafana)
-  # ─────────────────────────────────────────────────────────────────────────────
-  # prometheus:
-  #   image: prom/prometheus:v2.51.1
-  #   ports:
-  #     - "9090:9090"
-  #   volumes:
-  #     - ${AIRFLOW_PROJ_DIR:-.}/config:/etc/prometheus:ro
-  #   command:
-  #     - '--config.file=/etc/prometheus/prometheus.yml'
-  #     - '--storage.tsdb.path=/prometheus'
-  #   restart: always
-
-  # grafana:
-  #   image: grafana/grafana:10.4.0
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     GF_SECURITY_ADMIN_USER: admin
-  #     GF_SECURITY_ADMIN_PASSWORD: admin
-  #   volumes:
-  #     - grafana-data:/var/lib/grafana
-  #   depends_on:
-  #     - prometheus
-  #   restart: always
-
-  tests:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: tests
-    profiles: [ci]
-    command: pytest /tests/ -v --tb=short
-    environment:
-      PYTHONPATH: '/model:/app:/src'
-    volumes:
-      - ${AIRFLOW_PROJ_DIR:-.}/model:/model
-      - ${AIRFLOW_PROJ_DIR:-.}/src:/src
-      - ${AIRFLOW_PROJ_DIR:-.}/tests:/tests
-      - ${AIRFLOW_PROJ_DIR:-.}/api:/app
-    depends_on:
-      postgres:
-        condition: service_healthy
-
 volumes:
   postgres-db-volume:
-  mlflow-artifacts:
   minio-data:
-  clickhouse-data:
-  grafana-data:
+  airflow-logs:
+  airflow-config:
+  airflow-plugins:

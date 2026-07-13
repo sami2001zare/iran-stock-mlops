@@ -16,7 +16,16 @@ from datetime import timedelta
 
 import pendulum
 import polars as pl
-from airflow.datasets import Dataset
+try:
+    from airflow.sdk.definitions.asset import Asset as Dataset
+except ImportError:
+    try:
+        from airflow.sdk import Asset as Dataset
+    except ImportError:
+        try:
+            from airflow.assets import Asset as Dataset
+        except ImportError:
+            from airflow.datasets import Dataset
 from airflow.decorators import dag, task
 from airflow.utils.task_group import TaskGroup
 

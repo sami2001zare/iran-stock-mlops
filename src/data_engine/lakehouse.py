@@ -1,10 +1,3 @@
-"""
-DuckDB & Polars Lakehouse Storage Manager
-=========================================
-Manages out-of-core vectorized transformations across Bronze, Silver, and Gold layers
-stored in MinIO (or local filesystem) using Apache Iceberg/Parquet partition structures.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -12,14 +5,13 @@ import os
 from typing import Any
 
 import duckdb
+import pandas as pd
 import polars as pl
 
 logger = logging.getLogger(__name__)
 
 
 class LakehouseManager:
-    """Out-of-core query engine supporting MinIO S3 and local storage endpoints."""
-
     def __init__(
         self,
         s3_endpoint: str | None = None,
@@ -40,7 +32,6 @@ class LakehouseManager:
         os.makedirs(os.path.join(self.local_root, "gold"), exist_ok=True)
 
     def get_connection(self) -> duckdb.DuckDBPyConnection:
-        """Create and configure DuckDB connection with S3/HTTPFS secret extensions."""
         conn = duckdb.connect(database=":memory:")
         try:
             conn.execute("INSTALL httpfs; LOAD httpfs;")
@@ -59,10 +50,6 @@ class LakehouseManager:
         return conn
 
     def promote_bronze_to_silver(self, parquet_chunks: list[str], partition_ds: str) -> str:
-        """
-        Ingest chunked Bronze Parquet files, deduplicate by trade_id, clean schemas,
-        and write to Silver Medallion table partition using vectorized DuckDB C++ engine.
-        """
         if not parquet_chunks:
             raise ValueError("No Parquet chunks provided for promotion.")
 
@@ -103,11 +90,10 @@ class LakehouseManager:
         conn.execute(query)
         conn.close()
 
-        logger.info("✅ Successfully created Silver Parquet table partition: %s", out_silver_file)
+        logger.info("Successfully created Silver Parquet table partition: %s", out_silver_file)
         return out_silver_file
 
     def query_silver_table(self, ds: str | None = None) -> pl.DataFrame:
-        """Read Silver Lakehouse partition using high-speed Polars engine."""
         if ds:
             partition_path = os.path.join(self.local_root, "silver", "eth_trades_cleaned", f"ds={ds}", "*.parquet")
         else:
@@ -117,14 +103,12 @@ class LakehouseManager:
         try:
             return pl.read_parquet(partition_path)
         except Exception:
-            # Fallback if specific ds folder check needs exact file path
             exact_file = os.path.join(self.local_root, "silver", "eth_trades_cleaned", f"ds={ds}", "trades.parquet")
             if os.path.exists(exact_file):
                 return pl.read_parquet(exact_file)
             raise FileNotFoundError(f"Silver partition not found: {partition_path}")
 
     def write_gold_features(self, df: pl.DataFrame | pd.DataFrame, partition_ds: str) -> str:
-        """Save Gold feature matrix to compressed Lakehouse storage."""
         if isinstance(df, pd.DataFrame):
             df_pl = pl.from_pandas(df)
         else:
@@ -135,5 +119,5 @@ class LakehouseManager:
         out_gold_file = os.path.join(gold_dir, "features.parquet")
 
         df_pl.write_parquet(out_gold_file, compression="snappy")
-        logger.info("✅ Successfully written %d rows to Gold feature table: %s", len(df_pl), out_gold_file)
+        logger.info("Successfully written %d rows to Gold feature table: %s", len(df_pl), out_gold_file)
         return out_gold_file

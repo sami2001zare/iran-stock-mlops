@@ -1,0 +1,14 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "Lakehouse Postgres Cluster (Airflow & MLflow)",
+            "Group": "Servers",
+            "Host": "postgres",
+            "Port": 5432,
+            "MaintenanceDB": "airflow",
+            "Username": "airflow",
+            "Password": "airflow",
+            "SSLMode": "prefer"
+        }
+    }
+}

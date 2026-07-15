@@ -16,10 +16,26 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import os
+import sys
 
-from src.features.feast_definitions import FeastFeatureManager
-from src.features.quantitative import QuantitativeFeatureEngine
-from src.ml.drift import DriftDetectionEngine
+# Self-healing sys.path guarantee so FastAPI/Uvicorn locates src from any directory
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_proj_root = os.path.abspath(os.path.join(_current_dir, ".."))
+if _proj_root.endswith("api"):
+    _proj_root = os.path.abspath(os.path.join(_proj_root, ".."))
+for _p in [_current_dir, _proj_root, os.path.join(_proj_root, "src"), "/app", "/src"]:
+    if _p not in sys.path and os.path.exists(_p):
+        sys.path.insert(0, _p)
+
+try:
+    from src.features.feast_definitions import FeastFeatureManager
+    from src.features.quantitative import QuantitativeFeatureEngine
+    from src.ml.drift import DriftDetectionEngine
+except ImportError:
+    from features.feast_definitions import FeastFeatureManager
+    from features.quantitative import QuantitativeFeatureEngine
+    from ml.drift import DriftDetectionEngine
 
 logger = logging.getLogger(__name__)
 

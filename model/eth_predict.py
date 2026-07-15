@@ -1,18 +1,3 @@
-"""
-ETHUSDT Price Predictor — Inference Script
-==========================================
-Usage:
-    python eth_predict.py --input new_trades.csv
-    python eth_predict.py --input new_trades.csv --output my_predictions.csv
-    python eth_predict.py --input new_trades.csv --model-dir path/to/eth_model_artifacts
-
-This script:
-    1. Loads the saved model + transformer + metadata from eth_model_artifacts/
-    2. Applies the exact same feature engineering as training
-    3. Runs prediction on the new CSV data
-    4. Prints results and saves them to a CSV file
-"""
-
 import argparse
 import json
 import os
@@ -26,16 +11,11 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Feature Engineering  (must match eth_price_model.py exactly)
-# ─────────────────────────────────────────────────────────────────────────────
 def build_features(df: pd.DataFrame, windows: list, lag_steps: list) -> pd.DataFrame:
     """Apply the same feature engineering pipeline used during training."""
 
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # --- Temporal features ---
     df["ts_ms"]      = df["timestamp"] / 1000.0
     df["ts_sec"]     = df["ts_ms"] / 1000.0
     df["elapsed_sec"] = df["ts_sec"] - df["ts_sec"].iloc[0]
@@ -46,7 +26,6 @@ def build_features(df: pd.DataFrame, windows: list, lag_steps: list) -> pd.DataF
     df["second_sin"]    = np.sin(2 * np.pi * epoch_dt.dt.second / 60.0)
     df["second_cos"]    = np.cos(2 * np.pi * epoch_dt.dt.second / 60.0)
 
-    # --- Trading features ---
     df["log_quantity"]       = np.log1p(df["quantity"])
     df["log_quote_quantity"] = np.log1p(df["quote_quantity"])
     df["buyer_maker_int"]    = df["is_buyer_maker"].astype(int)
@@ -55,7 +34,6 @@ def build_features(df: pd.DataFrame, windows: list, lag_steps: list) -> pd.DataF
         df["quantity"], q=10, labels=False, duplicates="drop"
     )
 
-    # --- Rolling features ---
     for w in windows:
         df[f"price_roll_mean_{w}"] = df["price"].rolling(w, min_periods=1).mean()
         df[f"price_roll_std_{w}"]  = df["price"].rolling(w, min_periods=1).std().fillna(0)
@@ -65,13 +43,11 @@ def build_features(df: pd.DataFrame, windows: list, lag_steps: list) -> pd.DataF
         df[f"qty_roll_sum_{w}"]    = df["quantity"].rolling(w, min_periods=1).sum()
         df[f"buyer_roll_sum_{w}"]  = df["buyer_maker_int"].rolling(w, min_periods=1).sum()
 
-    # --- Lag features ---
     for lag in lag_steps:
         df[f"price_lag_{lag}"]  = df["price"].shift(lag)
         df[f"qty_lag_{lag}"]    = df["quantity"].shift(lag)
         df[f"return_lag_{lag}"] = df["price"].pct_change(lag)
 
-    # --- Derivative features ---
     df["price_momentum_5"]   = df["price"] - df["price_roll_mean_5"]
     df["price_momentum_20"]  = df["price"] - df["price_roll_mean_20"]
     df["volatility_ratio"]   = df["price_roll_std_10"] / (df["price_roll_mean_10"] + 1e-9)
@@ -91,10 +67,6 @@ def build_features(df: pd.DataFrame, windows: list, lag_steps: list) -> pd.DataF
     df.reset_index(drop=True, inplace=True)
     return df
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(
         description="ETHUSDT price prediction using the pre-trained GBR model."
@@ -127,7 +99,6 @@ def main():
     print("  ETHUSDT Price Predictor — Inference")
     print("=" * 65)
 
-    # ── 1. Load artifacts ────────────────────────────────────────────────────
     print(f"\n[1/4] Loading model artifacts from '{args.model_dir}'...")
 
     meta_path  = os.path.join(args.model_dir, "pipeline_meta.json")
@@ -146,8 +117,8 @@ def main():
     model = joblib.load(model_path)
     qt    = joblib.load(qt_path)
 
-    feature_cols = meta["feature_cols"]   # all 73 features (before pruning)
-    mask_keep    = np.array(meta["mask_keep"], dtype=bool)  # pruning mask
+    feature_cols = meta["feature_cols"] 
+    mask_keep    = np.array(meta["mask_keep"], dtype=bool)
     windows      = meta["windows"]
     lag_steps    = meta["lag_steps"]
 
@@ -155,7 +126,6 @@ def main():
     print(f"      Features   : {int(mask_keep.sum())} (pruned from {len(feature_cols)})")
     print(f"      Trained MAE: {meta['metrics_pruned']['MAE']:.4f} USDT")
 
-    # ── 2. Load new data ─────────────────────────────────────────────────────
     print(f"\n[2/4] Loading new data from '{args.input}'...")
     t0 = time.time()
 
@@ -164,7 +134,6 @@ def main():
         "timestamp", "is_buyer_maker", "is_best_match",
     ]
 
-    # Accept files with or without a header row
     sample = pd.read_csv(args.input, nrows=1, header=None)
     has_header = str(sample.iloc[0, 0]).lower() == "trade_id"
 
@@ -179,25 +148,20 @@ def main():
     print(f"      {len(df_raw):,} rows loaded  ({time.time()-t0:.2f}s)")
     print(f"      price range : {df_raw['price'].min():.2f} – {df_raw['price'].max():.2f} USDT")
 
-    # ── 3. Feature engineering + transform ───────────────────────────────────
     print("\n[3/4] Building features and transforming...")
     t0 = time.time()
 
     df_feat = build_features(df_raw.copy(), windows, lag_steps)
 
-    # Select only the columns used during training (in the same order)
     DROP_COLS = set(meta["drop_cols"])
     X_raw = df_feat[feature_cols].values.astype(np.float32)
 
-    # Apply the saved QuantileTransformer
     X_qt = qt.transform(X_raw)
 
-    # Apply the pruning mask
     X_pruned = X_qt[:, mask_keep]
 
     print(f"      {len(df_feat):,} rows after feature engineering  ({time.time()-t0:.2f}s)")
 
-    # ── 4. Predict ───────────────────────────────────────────────────────────
     print("\n[4/4] Running predictions...")
     t0 = time.time()
 
@@ -207,7 +171,6 @@ def main():
     print(f"      {len(y_pred):,} predictions completed in {elapsed:.3f}s  "
           f"({len(y_pred)/elapsed:,.0f} rows/s)")
 
-    # ── Display sample ───────────────────────────────────────────────────────
     has_actual = True
     try:
         actual_prices = df_feat["price"].values.astype(np.float32)
@@ -252,7 +215,6 @@ def main():
         for i in range(n_show):
             print(f"  {i+1:>5}  {y_pred[i]:>24.4f}")
 
-    # ── Save output ──────────────────────────────────────────────────────────
     out_df = df_feat[["trade_id", "timestamp", "price"]].copy() if "trade_id" in df_feat.columns else df_feat[["timestamp", "price"]].copy()
     out_df["predicted_price"] = y_pred
 

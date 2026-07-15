@@ -1,7 +1,3 @@
-"""
-Unit tests for Pydantic data schemas and Data Quality contracts (`src.data_engine.validators`).
-"""
-
 import pandas as pd
 import pytest
 from pydantic import ValidationError

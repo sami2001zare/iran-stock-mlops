@@ -1,10 +1,3 @@
-"""
-Machine Learning Model Training & Dynamic Feature Pruning
-=========================================================
-Trains HistGradientBoostingRegressor / LightGBM regressors with Quantile Quantization,
-performs iterative permutation/pruning of low-importance signals, and evaluates shadow accuracy.
-"""
-
 from __future__ import annotations
 
 import json
@@ -23,8 +16,6 @@ logger = logging.getLogger(__name__)
 
 
 class QuantitativeModelTrainer:
-    """Manages end-to-end model fitting, feature pruning, and evaluation."""
-
     @classmethod
     def prepare_quantized_features(
         cls,
@@ -33,15 +24,10 @@ class QuantitativeModelTrainer:
         target_col: str = "price",
         horizon_steps: int = 1,
     ) -> tuple[np.ndarray, np.ndarray, QuantileTransformer, list[str]]:
-        """
-        Prepare multi-horizon target (or next-step price/return) and fit 8-bit QuantileTransformer
-        to ensure robust scaling against extreme crypto market outliers.
-        """
         clean_df = df.dropna(subset=feature_cols + [target_col]).copy()
         if len(clean_df) < 50:
             raise ValueError("Insufficient rows for model training after dropna.")
 
-        # Target: future price level or log return
         if horizon_steps == 1:
             clean_df["target_y"] = clean_df[target_col].shift(-1)
         else:
@@ -55,7 +41,6 @@ class QuantitativeModelTrainer:
         qt = QuantileTransformer(n_quantiles=min(1000, len(X_raw)), output_distribution="uniform", random_state=42)
         X_q8 = qt.fit_transform(X_raw)
 
-        # Quantize to 8-bit integer range [0, 255] for maximum cache efficiency
         X_model = np.clip(np.round(X_q8 * 255.0), 0, 255).astype(np.uint8)
 
         return X_model, y, qt, feature_cols
@@ -67,7 +52,6 @@ class QuantitativeModelTrainer:
         y: np.ndarray,
         test_ratio: float = 0.2,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Strict temporal split (no shuffling) to preserve time-series ordering."""
         split_idx = int(len(X) * (1.0 - test_ratio))
         return X[:split_idx], X[split_idx:], y[:split_idx], y[split_idx:]
 
@@ -79,7 +63,6 @@ class QuantitativeModelTrainer:
         max_iter: int = 150,
         learning_rate: float = 0.08,
     ) -> HistGradientBoostingRegressor:
-        """Fit base Gradient Boosting model over quantized features."""
         logger.info("Training HistGBR model over %d rows with %d features...", X_train.shape[0], X_train.shape[1])
         model = HistGradientBoostingRegressor(
             max_iter=max_iter,
@@ -102,10 +85,6 @@ class QuantitativeModelTrainer:
         feature_cols: list[str],
         importance_threshold: float = 0.01,
     ) -> tuple[HistGradientBoostingRegressor, list[str], np.ndarray, np.ndarray]:
-        """
-        Prune low-importance features based on permutation or tree drop-off
-        and retrain a compact, highly performant champion model.
-        """
         from sklearn.inspection import permutation_importance
 
         logger.info("Evaluating feature importances for pruning...")
@@ -114,7 +93,6 @@ class QuantitativeModelTrainer:
 
         mask_keep = importances >= (np.max(importances) * importance_threshold)
         if not np.any(mask_keep):
-            # Fallback to top 15 features if all scores are tightly clustered
             top_indices = np.argsort(importances)[-15:]
             mask_keep = np.zeros_like(importances, dtype=bool)
             mask_keep[top_indices] = True
@@ -161,8 +139,17 @@ class QuantitativeModelTrainer:
         metrics: dict[str, float],
         output_dir: str = "/model/eth_model_artifacts",
     ) -> str:
-        """Persist model artifacts cleanly to shared disk or Lakehouse storage."""
-        os.makedirs(output_dir, exist_ok=True)
+        if output_dir == "/model/eth_model_artifacts" and not os.path.exists("/model") and os.path.exists("/opt/airflow/model"):
+            output_dir = "/opt/airflow/model/eth_model_artifacts"
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except PermissionError:
+            if output_dir.startswith("/model") and os.path.exists("/opt/airflow/model"):
+                output_dir = "/opt/airflow/model/eth_model_artifacts"
+                os.makedirs(output_dir, exist_ok=True)
+            else:
+                raise
+
         model_path = os.path.join(output_dir, "model_pruned.pkl")
         qt_path = os.path.join(output_dir, "quantile_transformer.pkl")
         meta_path = os.path.join(output_dir, "pipeline_meta.json")
@@ -181,5 +168,5 @@ class QuantitativeModelTrainer:
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
 
-        logger.info("✅ Saved model artifacts (`model_pruned.pkl`, `pipeline_meta.json`) to %s", output_dir)
+        logger.info("Saved model artifacts (`model_pruned.pkl`, `pipeline_meta.json`) to %s", output_dir)
         return output_dir

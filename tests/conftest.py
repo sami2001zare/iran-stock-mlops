@@ -1,22 +1,13 @@
-"""
-Shared Pytest Fixtures and Environment Configuration
-====================================================
-Automatically patches and mocks MLflow and optional Lakehouse/API/Airflow engines across unit tests
-so they run cleanly both inside Docker (where real packages exist) and directly on host development environments.
-"""
-
 import os
 import sys
 from unittest.mock import MagicMock, patch
 import pytest
 
-# Ensure project roots are in sys.path
 PROJ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 for p in [PROJ_ROOT, os.path.join(PROJ_ROOT, "src"), os.path.join(PROJ_ROOT, "api")]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-# If mlflow is missing in host environment, mock the top-level module
 try:
     import mlflow
 except ImportError:
@@ -28,7 +19,6 @@ except ImportError:
     sys.modules["mlflow.models.signature"] = MagicMock()
     import mlflow
 
-# If fastapi is missing on host during local testing, mock for unit test execution
 try:
     import fastapi
 except ImportError:
@@ -37,7 +27,6 @@ except ImportError:
     sys.modules["fastapi.testclient"] = MagicMock()
     sys.modules["prometheus_fastapi_instrumentator"] = MagicMock()
 
-# If airflow is missing on host during local testing, mock top-level module
 try:
     import airflow
 except ImportError:

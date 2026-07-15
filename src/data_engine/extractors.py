@@ -1,11 +1,3 @@
-"""
-Data Extraction & Ingestion Connectors (REST & Live Streams)
-============================================================
-Handles high-frequency chunked downloads from Binance spot trade archives,
-macroeconomic indicators (FRED / DXY / Yields), and streaming endpoints.
-Replaces single-threaded memory-heavy extraction with chunked streaming.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -22,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class BinanceSpotExtractor:
-    """Extracts historical daily spot trades from Binance data repository safely."""
 
     BASE_URL = "https://data.binance.vision/data/spot/daily/trades/{symbol}/{symbol}-trades-{ds}.zip"
 
@@ -34,10 +25,6 @@ class BinanceSpotExtractor:
         timeout: int = 600,
         chunk_size: int = 65536,
     ) -> str:
-        """
-        Download daily spot trade ZIP archive to a unique temporary file.
-        Fixes the legacy hardcoded day '15' bug by passing the exact `ds` date string.
-        """
         url = cls.BASE_URL.format(symbol=symbol.upper(), ds=ds)
         temp_dir = tempfile.mkdtemp(prefix=f"binance_{symbol}_{ds}_")
         zip_path = os.path.join(temp_dir, f"{symbol}-trades-{ds}.zip")
@@ -46,7 +33,6 @@ class BinanceSpotExtractor:
         try:
             response = requests.get(url, stream=True, timeout=timeout)
             if response.status_code == 404:
-                # Fallback generator for dry-run/testing when historical date zip isn't hosted
                 logger.warning("Binance URL 404. Generating synthetic fallback dataset for %s on %s", symbol, ds)
                 return cls._generate_fallback_trades_zip(ds, symbol, temp_dir)
             response.raise_for_status()
@@ -62,10 +48,6 @@ class BinanceSpotExtractor:
 
     @classmethod
     def extract_to_parquet_chunks(cls, zip_path: str, chunk_rows: int = 250_000) -> list[str]:
-        """
-        Unzip and convert CSV to compressed Parquet chunks out-of-core
-        to avoid single-DataFrame RAM exhaustion in worker nodes.
-        """
         temp_dir = os.path.dirname(zip_path)
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -80,7 +62,6 @@ class BinanceSpotExtractor:
         raw_csv_path = os.path.join(extract_dir, csv_files[0])
         parquet_chunks = []
 
-        # Read CSV in chunks and write directly to snappy-compressed parquet
         col_names = [
             "trade_id", "price", "quantity", "quote_quantity",
             "timestamp", "is_buyer_maker", "is_best_match"
@@ -104,7 +85,6 @@ class BinanceSpotExtractor:
 
     @staticmethod
     def _generate_fallback_trades_zip(ds: str, symbol: str, temp_dir: str) -> str:
-        """Generates realistic synthetic tick data for local testing when external URL fails."""
         import numpy as np
         n = 50_000
         rng = np.random.default_rng(seed=int(ds.replace("-", "")) % 100000)
@@ -132,13 +112,9 @@ class BinanceSpotExtractor:
 
 
 class MacroIndicatorsExtractor:
-    """Fetches macroeconomic vectors (FRED US10Y Yield, DXY Dollar Index, M2 Liquidity)."""
 
     @classmethod
     def fetch_macro_snapshot(cls, ds: str) -> dict[str, Any]:
-        """Fetch macroeconomic context for the given partition date."""
-        # In a live production setup, this queries FRED REST API / Yahoo Finance API
-        # Here we emit high-fidelity synthetic macroeconomic signals anchored to date
         import hashlib
         seed = int(hashlib.md5(ds.encode("utf-8")).hexdigest()[:8], 16)
         import numpy as np

@@ -1,21 +1,23 @@
-"""
-DAG 1: Medallion Lakehouse Ingestion & Data Quality Validation
-==============================================================
-Orchestrates chunked downloads of daily Binance ETHUSDT spot trades and macroeconomic indicators,
-runs Pydantic/Great Expectations style data quality assertions, and promotes Bronze data
-into Silver Iceberg/Parquet tables via vectorized out-of-core DuckDB C++ queries.
-"""
-
 from __future__ import annotations
 
 import json
 import logging
 import os
 import shutil
+import sys
 from datetime import timedelta
+
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_proj_root = os.path.abspath(os.path.join(_current_dir, ".."))
+if _proj_root.endswith("dags"):
+    _proj_root = os.path.abspath(os.path.join(_proj_root, ".."))
+for _p in [_proj_root, os.path.join(_proj_root, "src"), "/opt/airflow", "/opt/airflow/src"]:
+    if _p not in sys.path and os.path.exists(_p):
+        sys.path.insert(0, _p)
 
 import pendulum
 import polars as pl
+
 try:
     from airflow.sdk.definitions.asset import Asset as Dataset
 except ImportError:
@@ -26,29 +28,16 @@ except ImportError:
             from airflow.assets import Asset as Dataset
         except ImportError:
             from airflow.datasets import Dataset
+
 from airflow.decorators import dag, task
 from airflow.utils.task_group import TaskGroup
-
-# Internal package imports
-import os
-import sys
-
-# Guarantee repository root (/opt/airflow) and /opt/airflow/src are directly inside sys.path
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_proj_root = os.path.abspath(os.path.join(_current_dir, ".."))
-if _proj_root.endswith("dags"):
-    _proj_root = os.path.abspath(os.path.join(_proj_root, ".."))
-for _p in [_proj_root, os.path.join(_proj_root, "src"), "/opt/airflow", "/opt/airflow/src"]:
-    if _p not in sys.path and os.path.exists(_p):
-        sys.path.insert(0, _p)
 
 from src.data_engine.extractors import BinanceSpotExtractor, MacroIndicatorsExtractor
 from src.data_engine.lakehouse import LakehouseManager
 from src.data_engine.validators import DataContractValidator
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("airflow.dag1")
 
-# Output dataset trigger for downstream Feature Store DAG
 SILVER_DATASET = Dataset("s3://lakehouse/silver/eth_trades_cleaned")
 
 default_args = {
@@ -111,7 +100,6 @@ def binance_to_lakehouse_pipeline():
                 is_valid, report = DataContractValidator.validate_dataframe(df_chunk, min_rows=100)
                 if not is_valid:
                     logger.error("Chunk %s failed DQ validation! Errors: %s", path, report["errors"])
-                    # In enterprise setups, move failed chunks to Dead Letter Queue (DLQ)
                     raise ValueError(f"Data Quality failure on chunk {path}: {report['errors']}")
                 valid_chunks.append(path)
             logger.info("✅ All %d chunks passed stringent Pydantic/Data Quality contract checks.", len(valid_chunks))
@@ -126,14 +114,12 @@ def binance_to_lakehouse_pipeline():
         lakehouse = LakehouseManager()
         silver_path = lakehouse.promote_bronze_to_silver(chunk_paths, partition_ds=ds)
         
-        # Sync newly promoted Silver partition directly to ClickHouse OLAP table
         try:
             from src.data_engine.clickhouse_manager import ClickHouseManager
             ClickHouseManager().sync_silver_parquet_from_minio(partition_ds=ds)
         except Exception as ch_exc:
             logger.warning("ClickHouse sync notice (maybe clickhouse offline during minimal test): %s", ch_exc)
         
-        # Cleanup temporary extraction files
         if chunk_paths:
             temp_root = os.path.dirname(chunk_paths[0])
             if os.path.exists(temp_root) and "/tmp/" in temp_root:
@@ -142,10 +128,8 @@ def binance_to_lakehouse_pipeline():
 
         return silver_path
 
-    # Define orchestration task dependencies
     ingestion_group >> validation_group
     verified_chunks >> promote_to_silver_lakehouse(chunk_paths=verified_chunks)
 
 
-# Instantiate the DAG
 dag_instance = binance_to_lakehouse_pipeline()

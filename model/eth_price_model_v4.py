@@ -1,12 +1,3 @@
-"""
-ETHUSDT Price Prediction Pipeline — v4 (MLflow Integration)
-=============================================================
-Changes from v3:
-    - MLflow experiment tracking: params, per-batch metrics, final metrics
-    - MLflow artifact logging: model, transformer, pipeline metadata, feature importance
-    - MLflow Model Registry: registers pruned model as "ETHPricePredictor"
-    - MLFLOW_TRACKING_URI read from env (default: http://localhost:5000)
-"""
 
 import pandas as pd
 import numpy as np
@@ -28,9 +19,6 @@ from sklearn.metrics import (
     mean_absolute_percentage_error,
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────────────────
 DATA_PATH  = "ETHUSDT-trades-2026-06-13.csv"
 MODEL_DIR  = "eth_model_artifacts"
 OUT_JSON   = "eth_model_results.json"
@@ -60,9 +48,6 @@ MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 MLFLOW_EXPERIMENT   = "eth-price-prediction"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. Load Data
-# ─────────────────────────────────────────────────────────────────────────────
 def load_data(data_path: str, col_names: list) -> pd.DataFrame:
     print("\n[1/7] Loading Data...")
     t0 = time.time()
@@ -79,9 +64,6 @@ def load_data(data_path: str, col_names: list) -> pd.DataFrame:
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Feature Engineering
-# ─────────────────────────────────────────────────────────────────────────────
 def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
                          drop_cols: set) -> tuple:
     print("\n[2/7] Feature Engineering...")
@@ -152,9 +134,6 @@ def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
     return df, feature_cols, "price", X, y
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. Quantization (INT8)
-# ─────────────────────────────────────────────────────────────────────────────
 def quantize_data(X: np.ndarray) -> tuple:
     print("\n[3/7] Quantizing data (float32 → int8 mapping)...")
     t0 = time.time()
@@ -180,9 +159,6 @@ def quantize_data(X: np.ndarray) -> tuple:
     return X_model, X_q8, qt
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Train / Test Split
-# ─────────────────────────────────────────────────────────────────────────────
 def train_test_split_temporal(X_model: np.ndarray, y: np.ndarray,
                                split_ratio: float = TRAIN_SPLIT) -> tuple:
     print(f"\n[4/7] Temporal train/test split ({int(split_ratio*100)}% train)...")
@@ -201,9 +177,6 @@ def train_test_split_temporal(X_model: np.ndarray, y: np.ndarray,
     return X_train, X_test, y_train, y_test
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. Batching + Incremental Training
-# ─────────────────────────────────────────────────────────────────────────────
 def train_model(X_train: np.ndarray, y_train: np.ndarray,
                 batch_size: int, n_est_per_batch: int,
                 max_batches: int) -> tuple:
@@ -278,9 +251,6 @@ def train_model(X_train: np.ndarray, y_train: np.ndarray,
     return model, total_estimators, train_history
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Feature Pruning + Retraining
-# ─────────────────────────────────────────────────────────────────────────────
 def prune_and_retrain(model: GradientBoostingRegressor,
                       X_train: np.ndarray, X_test: np.ndarray,
                       y_train: np.ndarray,
@@ -323,9 +293,6 @@ def prune_and_retrain(model: GradientBoostingRegressor,
     return model_pruned, pruned_cols, removed_cols, mask_keep, feat_df, X_train_p, X_test_p, threshold
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. Evaluation
-# ─────────────────────────────────────────────────────────────────────────────
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, label: str = "") -> dict:
     return {
         "label":  label,
@@ -386,9 +353,6 @@ def evaluate_models(model, model_pruned,
     return m_full, m_pruned, y_pred_full, y_pred_pruned
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 8. Save Artifacts  (local + MLflow)
-# ─────────────────────────────────────────────────────────────────────────────
 def save_artifacts(model_pruned, qt,
                    feature_cols, pruned_cols, mask_keep,
                    threshold, total_estimators, m_pruned,
@@ -423,7 +387,7 @@ def save_artifacts(model_pruned, qt,
 
     feat_df.to_csv(feat_path, index=False)
 
-    # Log model to MLflow (with sklearn flavour for easy serving)
+
     mlflow.sklearn.log_model(
         sk_model=model_pruned,
         artifact_path="model",
@@ -431,7 +395,7 @@ def save_artifacts(model_pruned, qt,
         input_example=None,
     )
 
-    # Log supporting artifacts
+
     mlflow.log_artifact(qt_path,   artifact_path="artifacts")
     mlflow.log_artifact(meta_path, artifact_path="artifacts")
     mlflow.log_artifact(feat_path, artifact_path="artifacts")
@@ -443,9 +407,6 @@ def save_artifacts(model_pruned, qt,
     print("      All artifacts logged to MLflow")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 9. Save Results & Predictions
-# ─────────────────────────────────────────────────────────────────────────────
 def save_results(df, feature_cols, pruned_cols, removed_cols,
                  total_estimators, X_train, X_test,
                  train_history, m_full, m_pruned, feat_df,
@@ -488,9 +449,6 @@ def save_results(df, feature_cols, pruned_cols, removed_cols,
     print(f"  Predictions saved  : {pred_df.shape[0]} rows → {pred_csv}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 65)
     print("  ETHUSDT Price Prediction — v4 (MLflow)")

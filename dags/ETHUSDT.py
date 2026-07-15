@@ -64,19 +64,15 @@ with DAG(
                    'timestamp', 'is_buyer_maker', 'is_best_match']
         )
         
-        # Ensure timestamp is integer (no conversion to datetime needed for your table)
         df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce').astype('Int64')
         
-        # Optional: add human readable timestamp if you want
-        # df['timestamp_dt'] = pd.to_datetime(df['timestamp'], unit='us', errors='coerce')
         
         print(f"Prepared {len(df):,} rows for Hive table")
 
         final_csv = f"/tmp/ETHUSDT-trades-{ds}.csv"
-        df.to_csv(final_csv, index=False, header=False)   # No header for your table
+        df.to_csv(final_csv, index=False, header=False)
         return final_csv
 
-    # Tasks
     download_task = PythonOperator(
         task_id='download_zip',
         python_callable=download_zip,
@@ -113,5 +109,4 @@ with DAG(
         """,
     )
 
-    # Dependencies
     download_task >> unzip_task >> prepare_task >> upload_task

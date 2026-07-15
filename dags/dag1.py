@@ -1,11 +1,3 @@
-"""
-DAG 1: Medallion Lakehouse Ingestion & Data Quality Validation
-==============================================================
-Orchestrates chunked downloads of daily Binance ETHUSDT spot trades and macroeconomic indicators,
-runs Pydantic/Great Expectations style data quality assertions, and promotes Bronze data
-into Silver Iceberg/Parquet tables via vectorized out-of-core DuckDB C++ queries.
-"""
-
 from __future__ import annotations
 
 import json
@@ -15,7 +7,6 @@ import shutil
 import sys
 from datetime import timedelta
 
-# Self-healing sys.path guarantee so Airflow workers/schedulers locate src/ from any directory
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 _proj_root = os.path.abspath(os.path.join(_current_dir, ".."))
 if _proj_root.endswith("dags"):
@@ -27,7 +18,6 @@ for _p in [_proj_root, os.path.join(_proj_root, "src"), "/opt/airflow", "/opt/ai
 import pendulum
 import polars as pl
 
-# Universal Dataset/Asset import across Airflow 2.x and Airflow 3.x
 try:
     from airflow.sdk.definitions.asset import Asset as Dataset
 except ImportError:
@@ -42,14 +32,12 @@ except ImportError:
 from airflow.decorators import dag, task
 from airflow.utils.task_group import TaskGroup
 
-# Internal DataOps package imports
 from src.data_engine.extractors import BinanceSpotExtractor, MacroIndicatorsExtractor
 from src.data_engine.lakehouse import LakehouseManager
 from src.data_engine.validators import DataContractValidator
 
 logger = logging.getLogger("airflow.dag1")
 
-# Output dataset trigger for downstream Feature Store DAG
 SILVER_DATASET = Dataset("s3://lakehouse/silver/eth_trades_cleaned")
 
 default_args = {
@@ -77,14 +65,12 @@ def binance_to_lakehouse_pipeline():
     with TaskGroup("ingestion_stage", tooltip="Download external APIs securely") as ingestion_group:
         @task(task_id="download_spot_zip")
         def download_spot_zip(ds: str = None) -> str:
-            """Download raw daily spot trade ZIP safely without hardcoded day bugs."""
             zip_path = BinanceSpotExtractor.download_daily_trades(ds=ds, symbol="ETHUSDT")
             logger.info("Downloaded raw ZIP artifact: %s", zip_path)
             return zip_path
 
         @task(task_id="fetch_macro_indicators")
         def fetch_macro_indicators(ds: str = None) -> str:
-            """Fetch macroeconomic context (FRED Yields, DXY Index, M2 Liquidity)."""
             macro_data = MacroIndicatorsExtractor.fetch_macro_snapshot(ds=ds)
             out_dir = "/tmp/lakehouse/bronze/macro"
             os.makedirs(out_dir, exist_ok=True)
@@ -100,7 +86,6 @@ def binance_to_lakehouse_pipeline():
     with TaskGroup("validation_and_chunking_stage", tooltip="Chunk extraction and DQ checks") as validation_group:
         @task(task_id="split_to_parquet_chunks")
         def split_to_parquet_chunks(zip_path: str) -> list[str]:
-            """Convert raw uncompressed CSV to chunked snappy Parquet out-of-core."""
             return BinanceSpotExtractor.extract_to_parquet_chunks(zip_path, chunk_rows=250_000)
 
         @task(task_id="validate_data_quality")
@@ -122,18 +107,15 @@ def binance_to_lakehouse_pipeline():
 
     @task(task_id="promote_to_silver_lakehouse", outlets=[SILVER_DATASET])
     def promote_to_silver_lakehouse(chunk_paths: list[str], ds: str = None) -> str:
-        """Promote validated Bronze chunks to Silver partition using DuckDB SQL engine."""
         lakehouse = LakehouseManager()
         silver_path = lakehouse.promote_bronze_to_silver(chunk_paths, partition_ds=ds)
         
-        # Sync newly promoted Silver partition directly to ClickHouse OLAP table
         try:
             from src.data_engine.clickhouse_manager import ClickHouseManager
             ClickHouseManager().sync_silver_parquet_from_minio(partition_ds=ds)
         except Exception as ch_exc:
             logger.warning("ClickHouse sync notice (maybe clickhouse offline during minimal test): %s", ch_exc)
         
-        # Cleanup temporary extraction files
         if chunk_paths:
             temp_root = os.path.dirname(chunk_paths[0])
             if os.path.exists(temp_root) and "/tmp/" in temp_root:
@@ -142,10 +124,8 @@ def binance_to_lakehouse_pipeline():
 
         return silver_path
 
-    # Define orchestration task dependencies
     ingestion_group >> validation_group
     verified_chunks >> promote_to_silver_lakehouse(chunk_paths=verified_chunks)
 
 
-# Instantiate the DAG
 dag_instance = binance_to_lakehouse_pipeline()

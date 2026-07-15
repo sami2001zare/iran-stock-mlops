@@ -1,8 +1,3 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Step 1 Simplified DataOps Lakehouse Core
-# Minimal stack running Apache Airflow + MinIO + Redis + Postgres
-# to execute all DAG pipelines cleanly without unnecessary API/MLflow/OLAP overhead.
-# ─────────────────────────────────────────────────────────────────────────────
 x-airflow-common:
   &airflow-common
   image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.2.2}
@@ -31,11 +26,10 @@ x-airflow-common:
     AWS_DEFAULT_REGION: 'us-east-1'
     S3_BUCKET_LAKEHOUSE: 'lakehouse'
   volumes:
-    # Code & Artifact Folders (mounted from your Windows project root)
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
     - ${AIRFLOW_PROJ_DIR:-.}/model:/opt/airflow/model
-    # Internal Docker Volumes (prevents Windows WSL 2 mount/permission conflicts)
+    - ${AIRFLOW_PROJ_DIR:-.}/model:/model
     - airflow-logs:/opt/airflow/logs
     - airflow-config:/opt/airflow/config
     - airflow-plugins:/opt/airflow/plugins
@@ -50,9 +44,6 @@ x-airflow-common:
       condition: service_healthy
 
 services:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Shared Storage & Infrastructure (Postgres, Redis, MinIO Lakehouse)
-  # ─────────────────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16
     shm_size: 512m
@@ -137,9 +128,6 @@ services:
       start_period: 10s
     restart: always
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Apache Airflow Control Plane & Workers
-  # ─────────────────────────────────────────────────────────────────────────────
   airflow-apiserver:
     <<: *airflow-common
     command: api-server
@@ -245,16 +233,16 @@ services:
                 cur.execute(\"SELECT 1 FROM pg_database WHERE datname='mlflow'\")
                 if not cur.fetchone():
                     cur.execute('CREATE DATABASE mlflow')
-                    print('✅ Verified mlflow database exists.')
+                    print('Verified mlflow database exists.')
                 cur.execute(\"SELECT 1 FROM pg_database WHERE datname='quantitative_ts'\")
                 if not cur.fetchone():
                     cur.execute('CREATE DATABASE quantitative_ts')
-                    print('✅ Created quantitative_ts database.')
+                    print('Created quantitative_ts database.')
             conn_ts = psycopg2.connect('host=postgres user=airflow password=airflow dbname=quantitative_ts')
             conn_ts.autocommit = True
             with conn_ts.cursor() as cur_ts:
                 cur_ts.execute('CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;')
-                print('✅ Verified TimescaleDB extension enabled on quantitative_ts.')
+                print('Verified TimescaleDB extension enabled on quantitative_ts.')
         except Exception as e:
             print('Postgres/Timescale check notice:', e)
         " || true
@@ -267,7 +255,110 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
     user: "0:0"
 
+  mlflow:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql+psycopg2://airflow:airflow@postgres/mlflow
+      --default-artifact-root /mlflow/artifacts
+      --cors-allowed-origins "*"
+      --allowed-hosts "all,mlflow:5000,mlflow,localhost:5000,localhost:5001,localhost,127.0.0.1:5000,127.0.0.1,0.0.0.0:5000,0.0.0.0"
+    environment:
+      MLFLOW_DISABLE_DNS_REBINDING_PROTECTION: 'true'
+      MLFLOW_ALLOWED_HOSTS: '*'
+      MLFLOW_ALLOWED_ORIGINS: '*'
+    ports:
+      - "${MLFLOW_PORT:-5001}:5000"
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: fastapi
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${FASTAPI_PORT:-8000}:8000"
+    environment:
+      ETH_MODEL_DIR:       '/model/eth_model_artifacts'
+      MLFLOW_TRACKING_URI: 'http://mlflow:5000'
+      MLFLOW_MODEL_NAME:   'ETHPricePredictor'
+      PSI_THRESHOLD:       '0.20'
+      REDIS_URL:           'redis://redis:6379/0'
+      PYTHONPATH:          '/app:/model:/src'
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/model:/model
+      - ${AIRFLOW_PROJ_DIR:-.}/model:/opt/airflow/model
+      - ${AIRFLOW_PROJ_DIR:-.}/src:/src
+      - ${AIRFLOW_PROJ_DIR:-.}/api:/app
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:v2.51.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/config:/etc/prometheus:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: always
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ${AIRFLOW_PROJ_DIR:-.}/config/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: always
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@platform.ai
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_SERVER_JSON_FILE: '/pgadmin4/servers/servers.json'
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ${AIRFLOW_PROJ_DIR:-.}/config/pgadmin:/pgadmin4/servers:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
 volumes:
+  pgadmin-data:
+  grafana-data:
+  mlflow-artifacts:
   postgres-db-volume:
   minio-data:
   clickhouse-data:

@@ -1,10 +1,3 @@
-"""
-ClickHouse Quantitative OLAP Manager & Lakehouse Bridge
-======================================================
-Manages table initialization (`eth_trades`, `eth_ohlcv_1m`), S3 Parquet syncing (`s3://lakehouse/silver/...`),
-and sub-second quantitative queries (`VWAP`, `Order Flow Imbalance`, `Realized Volatility`) inside ClickHouse.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -18,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class ClickHouseManager:
-    """HTTP client bridge for ClickHouse SQL execution and Lakehouse S3 integration."""
-
     def __init__(
         self,
         host: str | None = None,
@@ -39,7 +30,6 @@ class ClickHouseManager:
         self.s3_pass = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
 
     def execute(self, query: str, format_type: str | None = None) -> Any:
-        """Execute arbitrary SQL query on ClickHouse over HTTP interface."""
         full_query = query
         if format_type and "FORMAT " not in query.upper():
             full_query = f"{query.rstrip(';')} FORMAT {format_type}"
@@ -68,13 +58,10 @@ class ClickHouseManager:
             return None
 
     def initialize_quantitative_schema(self) -> bool:
-        """Create database, raw tick table (`MergeTree`), and 1-minute OHLCV Materialized View."""
         logger.info("Initializing quantitative schema (`%s`) inside ClickHouse...", self.database)
 
-        # 1. Ensure database exists
         self.execute(f"CREATE DATABASE IF NOT EXISTS {self.database};")
 
-        # 2. Raw spot trades tick table (optimized for time-series range scanning)
         trades_sql = f"""
             CREATE TABLE IF NOT EXISTS {self.database}.eth_trades (
                 trade_id UInt64,
@@ -92,7 +79,6 @@ class ClickHouseManager:
         """
         self.execute(trades_sql)
 
-        # 3. Real-time 1-Minute OHLCV & Order Flow Imbalance Materialized View
         ohlcv_sql = f"""
             CREATE MATERIALIZED VIEW IF NOT EXISTS {self.database}.eth_ohlcv_1m
             ENGINE = AggregatingMergeTree()
@@ -144,7 +130,6 @@ class ClickHouseManager:
         """
         res = self.execute(query)
         if res is not None:
-            # Check row count
             count_res = self.execute(
                 f"SELECT count() FROM {self.database}.eth_trades WHERE partition_date = '{partition_ds}';"
             )

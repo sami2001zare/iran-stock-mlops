@@ -1,16 +1,6 @@
-"""
-Statistical Data Drift Detection Engine (PSI & KS Test)
-=======================================================
-Calculates Population Stability Index (PSI) and Kolmogorov-Smirnov (KS) drift statistics
-between baseline reference training features and newly incoming production distributions.
-Used by Airflow Branching Operators to decide whether automated model retraining is required.
-"""
-
 from __future__ import annotations
-
 import logging
 from typing import Any
-
 import numpy as np
 from scipy import stats
 
@@ -18,7 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 class DriftDetectionEngine:
-    """Calculates statistical drift scores across feature distributions."""
 
     @classmethod
     def calculate_psi(
@@ -27,20 +16,12 @@ class DriftDetectionEngine:
         current: np.ndarray | list[float],
         buckets: int = 10,
     ) -> float:
-        """
-        Calculate Population Stability Index (PSI) between reference and current samples.
-        Interpretation:
-          PSI < 0.10: No significant distribution shift (Stable)
-          0.10 <= PSI < 0.20: Moderate shift (Warning / Check features)
-          PSI >= 0.20: Significant data drift (Action Required: Trigger retraining)
-        """
         ref_arr = np.asarray(reference, dtype=float)
         cur_arr = np.asarray(current, dtype=float)
 
         if len(ref_arr) == 0 or len(cur_arr) == 0:
             return 0.0
 
-        # Create quantile breakpoints using reference distribution
         breakpoints = np.percentile(ref_arr, np.linspace(0, 100, buckets + 1))
         breakpoints[0] = -np.inf
         breakpoints[-1] = np.inf
@@ -60,7 +41,6 @@ class DriftDetectionEngine:
         reference: np.ndarray | list[float],
         current: np.ndarray | list[float],
     ) -> tuple[float, float]:
-        """Run two-sample Kolmogorov-Smirnov test. Returns (ks_stat, p_value)."""
         ref_arr = np.asarray(reference, dtype=float)
         cur_arr = np.asarray(current, dtype=float)
         if len(ref_arr) < 2 or len(cur_arr) < 2:
@@ -76,10 +56,6 @@ class DriftDetectionEngine:
         cur_matrix: dict[str, list[float]],
         psi_threshold: float = 0.20,
     ) -> dict[str, Any]:
-        """
-        Run drift evaluation across multiple key quantitative features.
-        Returns detailed diagnostic report indicating whether retraining is required.
-        """
         report: dict[str, Any] = {
             "is_drift_detected": False,
             "max_psi": 0.0,
@@ -108,8 +84,8 @@ class DriftDetectionEngine:
 
         if len(report["drifted_features"]) > 0 and report["max_psi"] >= psi_threshold:
             report["is_drift_detected"] = True
-            logger.warning("⚠️ Data Drift Detected! Max PSI: %.4f on features: %s", report["max_psi"], report["drifted_features"])
+            logger.warning("Data Drift Detected! Max PSI: %.4f on features: %s", report["max_psi"], report["drifted_features"])
         else:
-            logger.info("✅ Data distribution stable. Max PSI: %.4f (Threshold: %.2f)", report["max_psi"], psi_threshold)
+            logger.info("Data distribution stable. Max PSI: %.4f (Threshold: %.2f)", report["max_psi"], psi_threshold)
 
         return report

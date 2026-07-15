@@ -1,15 +1,3 @@
-"""
-ETHUSDT Price Prediction Pipeline
-==================================
-Features:
-    Feature Engineering from raw trading data
-    Quantization (int8) for memory reduction
-    Batching for efficient processing
-    Gradient Boosting Regression (GBR)
-    Pruning with feature importance + threshold
-    Train/Test Split: 80/20
-"""
-
 import pandas as pd
 import numpy as np
 import warnings
@@ -29,9 +17,6 @@ from sklearn.metrics import (
 from sklearn.inspection import permutation_importance
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────────────────────────
 DATA_PATH  = "ETHUSDT-trades-2026-06-13.csv"
 MODEL_DIR  = "eth_model_artifacts"
 OUT_JSON   = "eth_model_results.json"
@@ -51,9 +36,6 @@ N_ESTIMATORS_PER_BATCH  = 25
 MAX_BATCHES             = 50
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. Load Data
-# ─────────────────────────────────────────────────────────────────────────────
 def load_data(data_path: str, col_names: list) -> pd.DataFrame:
     """Load raw trade data from CSV file."""
     print("\n[1/7] Loading Data...")
@@ -66,9 +48,6 @@ def load_data(data_path: str, col_names: list) -> pd.DataFrame:
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Feature Engineering
-# ─────────────────────────────────────────────────────────────────────────────
 def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
                          drop_cols: set) -> tuple[pd.DataFrame, list, str, np.ndarray, np.ndarray]:
     """Create temporal, trading, rolling, lag, and derivative features."""
@@ -77,7 +56,7 @@ def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
 
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    # --- Temporal features ---
+
     df["ts_ms"]     = df["timestamp"] / 1000.0
     df["ts_sec"]    = df["ts_ms"] / 1000.0
     df["elapsed_sec"] = df["ts_sec"] - df["ts_sec"].iloc[0]
@@ -88,14 +67,14 @@ def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
     df["second_sin"]    = np.sin(2 * np.pi * epoch_dt.dt.second / 60.0)
     df["second_cos"]    = np.cos(2 * np.pi * epoch_dt.dt.second / 60.0)
 
-    # --- Trading features ---
+
     df["log_quantity"]       = np.log1p(df["quantity"])
     df["log_quote_quantity"] = np.log1p(df["quote_quantity"])
     df["buyer_maker_int"]    = df["is_buyer_maker"].astype(int)
     df["implied_price"]      = df["quote_quantity"] / (df["quantity"] + 1e-9)
     df["trade_size_bucket"]  = pd.qcut(df["quantity"], q=10, labels=False, duplicates="drop")
 
-    # --- Rolling features ---
+
     for w in windows:
         df[f"price_roll_mean_{w}"] = df["price"].rolling(w, min_periods=1).mean()
         df[f"price_roll_std_{w}"]  = df["price"].rolling(w, min_periods=1).std().fillna(0)
@@ -105,13 +84,13 @@ def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
         df[f"qty_roll_sum_{w}"]    = df["quantity"].rolling(w, min_periods=1).sum()
         df[f"buyer_roll_sum_{w}"]  = df["buyer_maker_int"].rolling(w, min_periods=1).sum()
 
-    # --- Lag features ---
+
     for lag in lag_steps:
         df[f"price_lag_{lag}"]  = df["price"].shift(lag)
         df[f"qty_lag_{lag}"]    = df["quantity"].shift(lag)
         df[f"return_lag_{lag}"] = df["price"].pct_change(lag)
 
-    # --- Derivative features ---
+
     df["price_momentum_5"]   = df["price"] - df["price_roll_mean_5"]
     df["price_momentum_20"]  = df["price"] - df["price_roll_mean_20"]
     df["volatility_ratio"]   = df["price_roll_std_10"] / (df["price_roll_mean_10"] + 1e-9)
@@ -127,7 +106,7 @@ def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
     )
     df["price_vs_vwap"] = df["price"] - df["vwap_20"]
 
-    # --- Drop NaNs ---
+
     df.dropna(inplace=True)
     df.reset_index(drop=True, inplace=True)
 
@@ -142,9 +121,6 @@ def feature_engineering(df: pd.DataFrame, windows: list, lag_steps: list,
     return df, feature_cols, target_col, X, y
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. Quantization (INT8)
-# ─────────────────────────────────────────────────────────────────────────────
 def quantize_data(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, QuantileTransformer]:
     """Apply QuantileTransformer and map to int8 range."""
     print("\n[3/7] Quantizing data (float32 → int8 mapping)...")
@@ -164,9 +140,6 @@ def quantize_data(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, QuantileTransf
     return X_model, X_q8, qt
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Train / Test Split
-# ─────────────────────────────────────────────────────────────────────────────
 def train_test_split_temporal(X_model: np.ndarray, y: np.ndarray,
                                split_ratio: float = 0.80) -> tuple:
     """Temporal (non-shuffled) train/test split."""
@@ -180,9 +153,6 @@ def train_test_split_temporal(X_model: np.ndarray, y: np.ndarray,
     return X_train, X_test, y_train, y_test
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. Batching + Incremental Training
-# ─────────────────────────────────────────────────────────────────────────────
 def train_model(X_train: np.ndarray, y_train: np.ndarray,
                 batch_size: int, n_est_per_batch: int,
                 max_batches: int) -> tuple[GradientBoostingRegressor, int, list]:
@@ -242,9 +212,6 @@ def train_model(X_train: np.ndarray, y_train: np.ndarray,
     return model, total_estimators, train_history
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Feature Pruning + Retraining
-# ─────────────────────────────────────────────────────────────────────────────
 def prune_and_retrain(model: GradientBoostingRegressor,
                       X_train: np.ndarray, X_test: np.ndarray,
                       y_train: np.ndarray,
@@ -285,9 +252,6 @@ def prune_and_retrain(model: GradientBoostingRegressor,
     return model_pruned, pruned_cols, removed_cols, mask_keep, feat_df, X_train_p, X_test_p, threshold
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. Evaluation
-# ─────────────────────────────────────────────────────────────────────────────
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray, label: str = "") -> dict:
     """Calculate MAE, RMSE, R², and MAPE."""
     return {
@@ -341,9 +305,6 @@ def evaluate_models(model: GradientBoostingRegressor,
     return m_full, m_pruned, y_pred_full, y_pred_pruned
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 8. Save Model Artifacts
-# ─────────────────────────────────────────────────────────────────────────────
 def save_artifacts(model_pruned: HistGradientBoostingRegressor,
                    qt: QuantileTransformer,
                    feature_cols: list, pruned_cols: list,
@@ -379,9 +340,6 @@ def save_artifacts(model_pruned: HistGradientBoostingRegressor,
     print(f"      Metadata saved   : {model_dir}/pipeline_meta.json")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 9. Save Results & Predictions
-# ─────────────────────────────────────────────────────────────────────────────
 def save_results(df: pd.DataFrame,
                  feature_cols: list, pruned_cols: list,
                  removed_cols: list, total_estimators: int,
@@ -428,52 +386,49 @@ def save_results(df: pd.DataFrame,
     print(f"  Predictions saved: {pred_df.shape[0]} rows")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────────────────────────────────────
 def main():
     print("=" * 65)
     print("  ETHUSDT Price Prediction — Gradient Boosting Regression")
     print("=" * 65)
 
-    # 1. Load data
+
     df = load_data(DATA_PATH, COL_NAMES)
 
-    # 2. Feature engineering
+
     df, feature_cols, target_col, X, y = feature_engineering(
         df, WINDOWS, LAG_STEPS, DROP_COLS
     )
 
-    # 3. Quantization
+
     X_model, X_q8, qt = quantize_data(X)
 
-    # 4. Train/test split
+
     X_train, X_test, y_train, y_test = train_test_split_temporal(X_model, y)
 
-    # 5. Train model
+
     model, total_estimators, train_history = train_model(
         X_train, y_train, BATCH_SIZE, N_ESTIMATORS_PER_BATCH, MAX_BATCHES
     )
 
-    # 6. Prune and retrain
+
     (model_pruned, pruned_cols, removed_cols,
      mask_keep, feat_df, X_train_p, X_test_p,
      threshold) = prune_and_retrain(
         model, X_train, X_test, y_train, feature_cols, total_estimators
     )
 
-    # 7. Evaluate
+
     m_full, m_pruned, y_pred_full, y_pred_pruned = evaluate_models(
         model, model_pruned, X_test, X_test_p, y_test, feat_df
     )
 
-    # 8. Save model artifacts
+
     save_artifacts(
         model_pruned, qt, feature_cols, pruned_cols,
         mask_keep, threshold, total_estimators, m_pruned, MODEL_DIR
     )
 
-    # 9. Save results and predictions
+
     save_results(
         df, feature_cols, pruned_cols, removed_cols,
         total_estimators, X_train, X_test, train_history,

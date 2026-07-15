@@ -1,28 +1,40 @@
-"""
-FastAPI Model Serving Engine & Quantitative Inference Service
-=============================================================
-Serves pruned HistGradientBoostingRegressor models over REST API,
-queries Feast Redis Online Feature Store for sub-millisecond scoring,
-exposes Prometheus telemetry metrics (`/metrics`), and handles PSI drift alarms.
-"""
-
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
+import os
+import sys
+
+# Self-healing sys.path guarantee so FastAPI/Uvicorn locates app, services, and src from any directory
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_proj_root = os.path.abspath(os.path.join(_current_dir, ".."))
+for _p in [_current_dir, _proj_root, os.path.join(_proj_root, "src"), "/app", "/src"]:
+    if _p not in sys.path and os.path.exists(_p):
+        sys.path.insert(0, _p)
+
 from fastapi import FastAPI, HTTPException, status
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from schemas import (
-    DriftDetectRequest,
-    DriftDetectResponse,
-    PredictRequest,
-    PredictResponse,
-)
-from services.inference import InferenceEngine, ModelStore
-from src.ml.drift import DriftDetectionEngine
+# Universal import across both api/services/inference.py and api/inference.py layouts
+try:
+    from schemas import DriftDetectRequest, DriftDetectResponse, PredictRequest, PredictResponse
+except ImportError:
+    from api.schemas import DriftDetectRequest, DriftDetectResponse, PredictRequest, PredictResponse
+
+try:
+    from services.inference import InferenceEngine, ModelStore
+except ImportError:
+    try:
+        from inference import InferenceEngine, ModelStore
+    except ImportError:
+        from api.services.inference import InferenceEngine, ModelStore
+
+try:
+    from src.ml.drift import DriftDetectionEngine
+except ImportError:
+    from ml.drift import DriftDetectionEngine
 
 logger = logging.getLogger("api.main")
 logging.basicConfig(level=logging.INFO)

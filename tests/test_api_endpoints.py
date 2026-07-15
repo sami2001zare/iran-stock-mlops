@@ -1,8 +1,3 @@
-"""
-Integration tests for FastAPI inference endpoints using `TestClient`.
-Runs against real FastAPI package or skips gracefully if running on a host without FastAPI installed.
-"""
-
 import os
 import sys
 from unittest.mock import MagicMock
@@ -14,7 +9,6 @@ if isinstance(fastapi_mod, MagicMock) or "fastapi" not in sys.modules:
 
 from fastapi.testclient import TestClient
 
-# Ensure api directory is reachable
 PROJ_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if os.path.join(PROJ_ROOT, "api") not in sys.path:
     sys.path.insert(0, os.path.join(PROJ_ROOT, "api"))
@@ -26,7 +20,6 @@ client = TestClient(app)
 
 
 def test_health_endpoint():
-    """Verify /health endpoint returns ONLINE status."""
     r = client.get("/health")
     assert r.status_code == 200
     data = r.json()
@@ -35,7 +28,6 @@ def test_health_endpoint():
 
 
 def test_predict_endpoint_fallback_when_model_missing():
-    """Verify /predict gracefully returns 503 or 200 when model is uninitialized."""
     ModelStore.model = None
     payload = {
         "trades": [{
@@ -49,7 +41,6 @@ def test_predict_endpoint_fallback_when_model_missing():
 
 
 def test_drift_detect_endpoint():
-    """Verify /drift/detect returns accurate PSI computation."""
     payload = {
         "reference_prices": [3500.0 + i * 0.1 for i in range(100)],
         "current_prices": [3500.0 + i * 0.1 for i in range(100)],
@@ -63,7 +54,6 @@ def test_drift_detect_endpoint():
 
 
 def test_prometheus_metrics_endpoint():
-    """Verify /metrics returns Prometheus text instrumentation."""
     r = client.get("/metrics")
     assert r.status_code == 200
     assert "http_requests_total" in r.text or "python_gc_" in r.text
